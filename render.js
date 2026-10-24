@@ -61,25 +61,50 @@ function wrapText(ctx, text, maxPx) {
 }
 
 /* Βρίσκει το μεγαλύτερο μέγεθος γραμματοσειράς (mm) που χωράει σε maxW x maxH (mm). */
+/* Όλες οι μετρήσεις κειμένου γίνονται σε σταθερή κλίμακα (REF_S pixel/mm) σε ξεχωριστό canvas,
+ * ώστε η αναδίπλωση και το μέγεθος να είναι ίδια σε προεπισκόπηση, PDF και εκτύπωση, όποια κι αν είναι η ανάλυση. */
+const REF_S = 24;
+let _mctx = null;
+function measureCtx() {
+  if (!_mctx) _mctx = document.createElement('canvas').getContext('2d');
+  return _mctx;
+}
+const _fitCache = new Map();
 function fitText(ctx, s, text, maxW, maxH, maxF, minF, weight) {
   weight = weight || 700;
+  const key = [text, maxW.toFixed(3), maxH.toFixed(3), maxF.toFixed(2), minF.toFixed(2), weight].join('\u0001');
+  const hit = _fitCache.get(key);
+  if (hit) return hit;
+  const m = measureCtx();
+  let res = null;
   for (let f = maxF; f >= minF - 1e-6; f -= 0.1) {
-    ctx.font = `${weight} ${(f * s).toFixed(2)}px ${LABEL_FONT}`;
-    const lines = wrapText(ctx, text, maxW * s);
+    m.font = `${weight} ${(f * REF_S).toFixed(2)}px ${LABEL_FONT}`;
+    const lines = wrapText(m, text, maxW * REF_S);
     const lh = f * 1.13;
-    if (lines.length * lh <= maxH + 1e-6) return { f, lines, lh, overflow: false };
+    if (lines.length * lh <= maxH + 1e-6) { res = { f, lines, lh, overflow: false }; break; }
   }
-  ctx.font = `${weight} ${(minF * s).toFixed(2)}px ${LABEL_FONT}`;
-  const lh = minF * 1.13;
-  const maxLines = Math.max(1, Math.floor(maxH / lh));
-  let lines = wrapText(ctx, text, maxW * s);
-  if (lines.length > maxLines) {
-    lines = lines.slice(0, maxLines);
-    let last = lines[maxLines - 1];
-    while (last.length && ctx.measureText(last + '…').width > maxW * s) last = last.slice(0, -1);
-    lines[maxLines - 1] = last + '…';
+  if (!res) {
+    m.font = `${weight} ${(minF * REF_S).toFixed(2)}px ${LABEL_FONT}`;
+    const lh = minF * 1.13;
+    const maxLines = Math.max(1, Math.floor(maxH / lh));
+    let lines = wrapText(m, text, maxW * REF_S);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      let last = lines[maxLines - 1];
+      while (last.length && m.measureText(last + '…').width > maxW * REF_S) last = last.slice(0, -1);
+      lines[maxLines - 1] = last + '…';
+    }
+    res = { f: minF, lines, lh, overflow: true };
   }
-  return { f: minF, lines, lh, overflow: true };
+  if (_fitCache.size > 4000) _fitCache.clear();
+  _fitCache.set(key, res);
+  return res;
+}
+/* Αναδίπλωση σε σταθερή κλίμακα για ελεύθερο κείμενο (αυτοκόλλητο). */
+function wrapFixed(text, fontMM, weight, maxW) {
+  const m = measureCtx();
+  m.font = `${weight} ${(fontMM * REF_S).toFixed(2)}px ${LABEL_FONT}`;
+  return wrapText(m, text, maxW * REF_S);
 }
 
 function drawLines(ctx, s, fit, cx, top, weight) {
@@ -100,7 +125,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
   ctx.strokeStyle = sc;
 
   if (c.rating) {
-    const fr = fitText(ctx, s, c.rating, iw, Math.min(2.4, h * 0.18), Math.min(2.2, h * 0.17), 1.2, 700);
+    const fr = fitText(ctx, s, c.rating, iw, Math.min(2.4, h * 0.18), Math.max(1.2, Math.min(2.2, h * 0.17, capF && capF < 99 ? capF : 99)), 1.2, 700);
     const rh = fr.lh * fr.lines.length;
     if (!measureOnly) { ctx.fillStyle = fg; drawLines(ctx, s, fr, cx, bottom - rh, 700); }
     bottom -= rh + 0.3;
@@ -132,6 +157,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
     if (measureOnly) return fit.f;
     if (fit.overflow && stats) stats.overflow++;
     const th = fit.lh * fit.lines.length;
+    if (stats && stats.lines) stats.lines.push(fit.lines.join('|') + '@' + fit.f.toFixed(1));
     ctx.fillStyle = fg;
     drawLines(ctx, s, fit, cx, top + (avail - th) / 2, 700);
   }
@@ -150,36 +176,28 @@ function drawStrip(ctx, s, x, y, cells, h, unit, stats) {
     mx += c.w * unit;
   });
   // 1. φόντα
+  // κάτω όριο: ένα κελί με πολύ κείμενο δεν μικραίνει όλη τη λωρίδα (μικραίνει μόνο το ίδιο)
+  capF = Math.max(capF, Math.min(2.0, h * 0.17));
   let cx = x;
   cells.forEach(c => {
     const cw = c.w * unit;
     if (!c.blank && c.bg && c.bg !== '#ffffff') { ctx.fillStyle = c.bg; ctx.fillRect(cx * s, y * s, cw * s, h * s); }
     cx += cw;
   });
-  // 2. γκρι διαχωριστικά κενών θέσεων και εξωτερικό περίγραμμα (γραμμή κοπής)
+  // 2. διαχωριστικά: ανάμεσα σε κενές θέσεις γκρι, αλλιώς στο χρώμα περιγράμματος
+  const bcol = (cells.find(c => !c.blank) || {}).bc || '#000';
   cx = x;
   ctx.lineWidth = Math.max(1, 0.18 * s);
   cells.forEach((c, i) => {
     cx += c.w * unit;
-    if (i === cells.length - 1 || !(c.blank && cells[i + 1].blank) && !(c.blank || cells[i + 1].blank)) return;
-    ctx.strokeStyle = '#b5b5b5';
+    if (i === cells.length - 1) return;
+    ctx.strokeStyle = (c.blank && cells[i + 1].blank) ? '#b5b5b5' : bcol;
     ctx.beginPath(); ctx.moveTo(cx * s, y * s); ctx.lineTo(cx * s, (y + h) * s); ctx.stroke();
   });
-  ctx.strokeStyle = '#000';
+  // 3. εξωτερικό περίγραμμα (γραμμή κοπής)
+  ctx.strokeStyle = bcol;
   ctx.lineWidth = Math.max(1, 0.25 * s);
   ctx.strokeRect(x * s, y * s, total * s, h * s);
-  // 3. περίγραμμα κάθε στοιχείου στο χρώμα του
-  cx = x;
-  const bw = Math.max(1, 0.25 * s);
-  cells.forEach(c => {
-    const cw = c.w * unit;
-    if (!c.blank) {
-      ctx.strokeStyle = c.bc || '#000';
-      ctx.lineWidth = bw;
-      ctx.strokeRect(cx * s + bw / 2, y * s + bw / 2, cw * s - bw, h * s - bw);
-    }
-    cx += cw;
-  });
   // 4. περιεχόμενο
   cx = x;
   cells.forEach(c => {
@@ -193,11 +211,12 @@ function drawStrip(ctx, s, x, y, cells, h, unit, stats) {
 function rowUnits(row) { return row.items.reduce((a, i) => a + i.w, 0); }
 
 function buildRows(project, settings) {
+  const col = project.colors || { bg: '#ffffff', fg: '#000000', sc: '#000000', bc: '#000000' };
   return project.rows.map((r, ri) => {
     const cells = r.items.map(i => ({
       w: i.w, text: i.text, rating: i.rating,
       sym: settings.showSymbols ? i.sym : '',
-      bg: i.bg, fg: i.fg, sc: i.sc, bc: i.bc
+      bg: col.bg, fg: col.fg, sc: col.sc, bc: col.bc
     }));
     const cap = +project.modulesPerRow || 0;
     if (project.fillEmpty && cap > 0) {
@@ -304,8 +323,11 @@ function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x * s, y * s, w * s, h * s, r * s);
   else ctx.rect(x * s, y * s, w * s, h * s);
+  ctx.fillStyle = /^#[0-9a-f]{6}$/i.test(e.bg || '') ? e.bg : '#ffffff';
+  ctx.fill();
   ctx.stroke();
   ctx.restore();
+  const ink = textOn(e.bg);
 
   const pad = Math.min(3, h * 0.1);
   let tx = x + pad, tw = w - 2 * pad;
@@ -324,13 +346,12 @@ function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
   if (e.extra) lines.push({ text: e.extra, k: 0.85, wt: 400 });
   if (!lines.length) lines.push({ text: 'Συμπληρώστε τα στοιχεία σας', k: 1, wt: 400 });
   const availH = h - 2 * pad;
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = ink;
   for (let f = Math.min(5, h * 0.16); f >= 1.2; f -= 0.1) {
     let total = 0;
     const laid = lines.map(L => {
       const fs = f * L.k;
-      ctx.font = `${L.wt} ${(fs * s).toFixed(2)}px ${LABEL_FONT}`;
-      const ls = wrapText(ctx, L.text, tw * s);
+      const ls = wrapFixed(L.text, fs, L.wt, tw);
       const lh = fs * 1.18;
       total += ls.length * lh;
       return { ls, fs, lh, wt: L.wt };
@@ -349,6 +370,14 @@ function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
       break;
     }
   }
+}
+
+/* Μαύρα ή λευκά γράμματα, ανάλογα με το πόσο σκούρο είναι το φόντο */
+function textOn(bg) {
+  if (!/^#[0-9a-f]{6}$/i.test(bg || '')) return '#000';
+  const n = parseInt(bg.slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+  const lum = (0.2126 * R + 0.7152 * G + 0.0722 * B) / 255;
+  return lum < 0.5 ? '#fff' : '#000';
 }
 
 /* ---------- Βαθμονόμηση ---------- */

@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 const SUGGEST = ['Γενικός διακόπτης', 'Ρελέ διαρροής', 'Θερμοσίφωνας', 'Πρίζες κουζίνας', 'Φωτισμός σαλονιού',
@@ -39,14 +39,22 @@ const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); retur
 /* ================= Δεδομένα ================= */
 function normItem(i) {
   i = i || {};
-  const o = { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || '') };
-  COL_KEYS.forEach(k => { o[k] = isHex(i[k]) ? i[k].toLowerCase() : DEF_COL[k]; });
-  return o;
+  return { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || '') };
 }
 function normRow(r) { r = r || {}; return { id: r.id || uid(), name: String(r.name || ''), items: (Array.isArray(r.items) ? r.items : []).map(normItem) }; }
+function normColors(c, items) {
+  // έκδοση 1.1 είχε χρώματα ανά στοιχείο: παίρνουμε του πρώτου στοιχείου με μη-προεπιλεγμένα χρώματα
+  if (!c && items) c = items.find(i => i && COL_KEYS.some(k => isHex(i[k]) && i[k].toLowerCase() !== DEF_COL[k]));
+  c = c || {};
+  const o = {};
+  COL_KEYS.forEach(k => { o[k] = isHex(c[k]) ? c[k].toLowerCase() : DEF_COL[k]; });
+  return o;
+}
 function normProject(p) {
   if (!p || typeof p !== 'object') return null;
+  const rawItems = (Array.isArray(p.rows) ? p.rows : []).flatMap(r => (r && Array.isArray(r.items)) ? r.items : []);
   return {
+    colors: normColors(p.colors, rawItems),
     id: p.id || uid(), name: String(p.name || 'Χωρίς όνομα'), address: String(p.address || ''),
     modulesPerRow: clamp(Math.round(num(p.modulesPerRow, 12)), 0, 96), fillEmpty: p.fillEmpty !== false,
     sample: !!p.sample, createdAt: +p.createdAt || Date.now(), updatedAt: +p.updatedAt || Date.now(),
@@ -66,7 +74,7 @@ function normalize(d) {
   return {
     schema: 1,
     projects: (Array.isArray(d.projects) ? d.projects : []).map(normProject).filter(Boolean),
-    electrician: Object.assign({ name: '', phone: '', email: '', extra: '', logo: '' }, d.electrician || {}),
+    electrician: (e => { e.bg = isHex(e.bg) ? e.bg.toLowerCase() : '#ffffff'; return e; })(Object.assign({ name: '', phone: '', email: '', extra: '', logo: '', bg: '#ffffff' }, d.electrician || {})),
     settings: s,
     lastProjectId: d.lastProjectId || null,
     lastBackup: d.lastBackup || null,
@@ -201,12 +209,28 @@ function fmtDate(ts) {
 function safeName(s) { return (String(s || 'PanelLabels').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-').slice(0, 60)) || 'PanelLabels'; }
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
-async function deliverFile(blob, filename) {
+/* Παράδοση αρχείου: στο κινητό με το μενού κοινοποίησης (εκεί υπάρχει «Εκτύπωση» και «Αποθήκευση»),
+ * αλλιώς λήψη. Αν ο browser δεν επιτρέψει την κοινοποίηση επειδή πέρασε χρόνος από το πάτημα,
+ * εμφανίζεται κουμπί για νέο πάτημα. printHint: κείμενο που εξηγεί πού είναι η εκτύπωση. */
+async function deliverFile(blob, filename, printHint) {
   const file = new File([blob], filename, { type: blob.type });
-  if (isTouch() && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: filename }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
+  const canShare = isTouch() && navigator.canShare && navigator.canShare({ files: [file] });
+  if (canShare) {
+    try { await navigator.share({ files: [file], title: filename }); return 'shared'; }
+    catch (e) {
+      if (e && e.name === 'AbortError') return 'cancelled';
+      if (e && e.name === 'NotAllowedError') {
+        const go = await dialog({ title: 'Το αρχείο είναι έτοιμο', text: printHint || filename, ok: printHint ? 'Άνοιγμα για εκτύπωση' : 'Άνοιγμα', cancel: 'Κλείσιμο' });
+        if (!go) return 'cancelled';
+        try { await navigator.share({ files: [file], title: filename }); return 'shared'; }
+        catch (e2) { if (e2 && e2.name === 'AbortError') return 'cancelled'; }
+      }
+    }
   }
+  downloadBlob(blob, filename);
+  return 'downloaded';
+}
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename; a.rel = 'noopener';
@@ -215,7 +239,7 @@ async function deliverFile(blob, filename) {
 }
 
 /* ================= Πλοήγηση ================= */
-const VIEWS = ['projects', 'editor', 'print', 'info', 'backup'];
+const VIEWS = ['projects', 'editor', 'colors', 'print', 'info', 'backup'];
 function route() {
   const h = (location.hash || '').replace('#', '');
   UI.view = VIEWS.includes(h) ? h : (currentProject() ? 'editor' : 'projects');
@@ -230,8 +254,9 @@ function render() {
   const p = currentProject();
   $('#topProject').textContent = p ? p.name : 'Ετικέτες ηλεκτρικών πινάκων';
   const app = $('#app');
-  const fn = { projects: viewProjects, editor: viewEditor, print: viewPrint, info: viewInfo, backup: viewBackup }[UI.view];
+  const fn = { projects: viewProjects, editor: viewEditor, colors: viewColors, print: viewPrint, info: viewInfo, backup: viewBackup }[UI.view];
   app.innerHTML = fn();
+  if (UI.view === 'colors') renderColorPreview();
   if (UI.view === 'print') schedulePreview(0);
   if (UI.view === 'info') renderStickerPreview();
 }
@@ -300,7 +325,7 @@ function rowHtml(p, r, ri) {
   const capCls = cap ? (used > cap ? 'over' : used === cap ? 'full' : '') : '';
   const cells = r.items.map(i => {
     const ph = !i.text.trim();
-    return `<button class="cell item${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w};--bg:${i.bg};--fg:${i.fg};--sc:${i.sc};--bc:${i.bc}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
+    return `<button class="cell item${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
       <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(i.text)}</span>${i.rating ? `<span class="r">${esc(i.rating)}</span>` : ''}</button>`;
   }).join('');
   const free = rowFree(p, r);
@@ -322,7 +347,7 @@ function rowHtml(p, r, ri) {
         <button class="btn icon ghost danger" data-act="rowDel" data-row="${r.id}" aria-label="Διαγραφή σειράς"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
       </div>
     </div>
-    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
+    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip" style="--bg:${p.colors.bg};--fg:${p.colors.fg};--sc:${p.colors.sc};--bc:${p.colors.bc}">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
     ${cap && !canAdd && used <= cap ? `<p class="hint">Η σειρά είναι γεμάτη.${free > 0 ? ' Περισσεύει μισή θέση.' : ''}</p>` : ''}
     ${cap && used > cap ? `<p class="row-warn">Η σειρά ξεπερνά τις ${cap} θέσεις κατά ${fmtUnits(used - cap)} μον.</p>` : ''}
   </article>`;
@@ -360,10 +385,6 @@ function openSheet(itemId, focusText) {
   const sh = $('#sheet');
   const freeHere = rowFree(p, f.row, it);
   const prevRow = p.rows[f.ri - 1], nextRow = p.rows[f.ri + 1];
-  const swatches = k => (k === 'bg' ? BG_SWATCH : INK_SWATCH).map(c =>
-    `<button class="sw ${it[k] === c ? 'on' : ''}" style="--c:${c}" data-act="setColor" data-k="${k}" data-c="${c}" aria-label="${COL_LABEL[k]} ${c}"></button>`).join('');
-  const colorRow = k => `<div class="color-row"><span class="cl">${COL_LABEL[k]}</span><div class="sws" id="sw-${k}">${swatches(k)}
-      <label class="sw custom ${(k === 'bg' ? BG_SWATCH : INK_SWATCH).includes(it[k]) ? '' : 'on'}" style="--c:${it[k]}" title="Άλλο χρώμα"><input type="color" data-colork="${k}" value="${it[k]}" aria-label="Άλλο χρώμα για ${COL_LABEL[k]}"></label></div></div>`;
   sh.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Επεξεργασία στοιχείου">
     <div class="grab"></div>
     <div class="sheet-head"><h2>Σειρά ${f.ri + 1} · θέση ${f.ii + 1}</h2><button class="btn primary small" data-act="closeSheet">Έτοιμο</button></div>
@@ -376,8 +397,6 @@ function openSheet(itemId, focusText) {
       <button class="sym-btn ${!it.sym ? 'on' : ''}" data-act="setSym" data-sym=""><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg>Χωρίς</button>
       ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${it.sym === k ? 'on' : ''}" data-act="setSym" data-sym="${k}">${symSvg(k, '')}${esc(SYMBOLS[k].name)}</button>`).join('')}
     </div></div>
-    <div class="fld"><span>Χρώματα</span>${COL_KEYS.map(colorRow).join('')}
-      <div class="btn-row"><button class="btn small" data-act="colorsToRow">Ίδια χρώματα σε όλη τη σειρά</button><button class="btn small ghost" data-act="colorsReset">Προεπιλογή (λευκό/μαύρο)</button></div></div>
     <div class="fld"><span>Μετακίνηση</span><div class="move-grid">
       <button class="btn" data-act="mvLeft" ${f.ii === 0 ? 'disabled' : ''}>← Αριστερά</button>
       <button class="btn" data-act="mvRight" ${f.ii === f.row.items.length - 1 ? 'disabled' : ''}>Δεξιά →</button>
@@ -410,6 +429,88 @@ function closeSheet(silent) {
 }
 function sheetCtx() { const p = currentProject(); const f = p && UI.sheetItem && findItem(p, UI.sheetItem); return f ? { p, f } : null; }
 
+/* ================= Οθόνη: Χρώματα ετικετών ================= */
+/* Επιλογέας χρώματος: έτοιμα χρώματα + «άλλο χρώμα». group: 'label' (ετικέτες έργου) ή 'sticker' (αυτοκόλλητο). */
+function colorPicker(group, key, value, palette, label) {
+  const sw = palette.map(c => `<button class="sw ${value === c ? 'on' : ''}" style="--c:${c}" data-act="pickColor" data-g="${group}" data-k="${key}" data-c="${c}" aria-label="${esc(label)} ${c}" aria-pressed="${value === c}"></button>`).join('');
+  const custom = !palette.includes(value);
+  return `<div class="color-row"><span class="cl">${esc(label)}</span><div class="sws" data-sws="${group}-${key}">${sw}
+    <label class="sw custom ${custom ? 'on' : ''}" style="--c:${value}" title="Άλλο χρώμα"><input type="color" id="cp-${group}-${key}" data-pickg="${group}" data-pickk="${key}" value="${value}" aria-label="Άλλο χρώμα: ${esc(label)}"></label></div></div>`;
+}
+function applyColor(group, key, c, inputEl) {
+  if (!isHex(c)) return;
+  if (group === 'label') {
+    const p = currentProject(); if (!p || !COL_KEYS.includes(key)) return;
+    p.colors[key] = c;
+    commit({ debounce: !!inputEl });
+    renderColorPreview(inputEl ? 120 : 0);
+  } else if (group === 'sticker') {
+    D().electrician.bg = c;
+    commit({ debounce: !!inputEl, noTouch: true });
+    renderStickerPreview(inputEl ? 120 : 0);
+  } else return;
+  // ενημέρωση επιλεγμένου κύκλου χωρίς να ξαναχτιστεί η οθόνη (το παράθυρο χρώματος μένει ανοιχτό)
+  const box = document.querySelector(`[data-sws="${group}-${key}"]`);
+  if (box) {
+    const pal = (key === 'bg' ? BG_SWATCH : INK_SWATCH);
+    box.querySelectorAll('.sw').forEach(b => {
+      const on = b.classList.contains('custom') ? !pal.includes(c) : b.dataset.c === c;
+      b.classList.toggle('on', on);
+      if (!b.classList.contains('custom')) b.setAttribute('aria-pressed', on);
+    });
+    const cust = box.querySelector('.sw.custom');
+    if (cust) { cust.style.setProperty('--c', c); const i = cust.querySelector('input'); if (i && i !== inputEl) i.value = c; }
+  }
+}
+
+function viewColors() {
+  const p = currentProject();
+  if (!p) return `<div class="panel empty-state"><h2>Δεν έχει ανοίξει έργο</h2><p>Τα χρώματα ορίζονται για κάθε έργο. Ανοίξτε ένα έργο πρώτα.</p><a class="btn primary" href="#projects">Λίστα έργων</a></div>`;
+  const c = p.colors;
+  return `<div class="view-head"><div><div class="eyebrow">Χρώματα ετικετών</div><h1>${esc(p.name)}</h1></div></div>
+  <p class="lead">Ορίζονται μία φορά και ισχύουν για όλες τις ετικέτες αυτού του έργου, στην οθόνη, στο PDF και στην εκτύπωση.</p>
+  <section class="panel">
+    ${colorPicker('label', 'bg', c.bg, BG_SWATCH, 'Φόντο ετικέτας')}
+    ${colorPicker('label', 'fg', c.fg, INK_SWATCH, 'Γραμματοσειρά')}
+    ${colorPicker('label', 'sc', c.sc, INK_SWATCH, 'Σύμβολο')}
+    ${colorPicker('label', 'bc', c.bc, INK_SWATCH, 'Περίγραμμα')}
+    <div class="btn-row"><button class="btn ghost" data-act="colorsReset">Προεπιλογή (λευκό φόντο, μαύρα στοιχεία)</button></div>
+  </section>
+  <section class="panel">
+    <h2>Προεπισκόπηση</h2>
+    <div class="preview" id="colorPreview"></div>
+    <p class="hint">Το αυτοκόλλητο ηλεκτρολόγου έχει δικό του φόντο, στην καρτέλα «Στοιχεία».</p>
+  </section>`;
+}
+
+let colorTimer = 0;
+function renderColorPreview(delay) {
+  clearTimeout(colorTimer);
+  colorTimer = setTimeout(() => {
+    const box = $('#colorPreview');
+    const p = currentProject();
+    if (!box || !p) return;
+    const st = S(), unit = +st.unitMM, H = +st.labelH;
+    let rows = buildRows(p, st).slice(0, 2);
+    if (!rows.length) rows = [{ cells: [{ w: 2, text: 'Γενικός διακόπτης', sym: 'main', rating: '40A' }, { w: 1, text: 'Φωτισμός', sym: 'light', rating: '10A' }, { w: 1, text: 'Πρίζες', sym: 'socket', rating: '16A' }].map(x => Object.assign(x, p.colors)) }];
+    const width = Math.max(200, box.clientWidth - 28);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    box.innerHTML = '';
+    rows.forEach(r => {
+      // μόνο για ευανάγνωστη προεπισκόπηση: κομμάτια περίπου 3,2 px ανά mm
+      const segs = splitCells(r.cells, unit, Math.max(unit * 2, width / 3.2));
+      segs.forEach(seg => {
+        const w = stripWidth(seg, unit);
+        const pg = { w: w + 1, h: H + 1, els: [{ t: 'strip', x: 0.5, y: 0.5, cells: seg, h: H }] };
+        const cssW = Math.min(width, (w + 1) * 3.2);
+        const cv = renderPage(pg, Math.min(300, cssW * dpr / (pg.w / MM_PER_IN)), renderCtx(null), null);
+        cv.style.width = cssW + 'px';
+        box.appendChild(cv);
+      });
+    });
+  }, delay || 0);
+}
+
 /* ================= Οθόνη: Εκτύπωση ================= */
 function viewPrint() {
   const p = currentProject();
@@ -438,7 +539,7 @@ function viewPrint() {
       <button class="btn" data-act="printLabels"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση</button>
       <button class="btn ghost" data-act="pdfCalib">Σελίδα δοκιμής διαστάσεων</button>
     </div>
-    <p class="hint">Στο παράθυρο εκτύπωσης επιλέξτε κλίμακα <b>100%</b> / «Πραγματικό μέγεθος», όχι «Προσαρμογή στη σελίδα». Στην πρώτη χρήση τυπώστε τη σελίδα δοκιμής και μετρήστε με χάρακα. Η προεπισκόπηση στην οθόνη δεν αρκεί για έλεγχο διαστάσεων.${roll ? ' Για θερμικό εκτυπωτή: κάθε λωρίδα γίνεται ξεχωριστή σελίδα PDF στο ακριβές μέγεθός της. Ανοίξτε το PDF από την εφαρμογή του εκτυπωτή.' : ''}</p>
+    <p class="hint">Το κουμπί «Εκτύπωση» φτιάχνει το PDF και το ανοίγει για εκτύπωση: στο κινητό από το μενού κοινοποίησης («Εκτύπωση»), στον υπολογιστή σε νέα καρτέλα. Επιλέξτε κλίμακα <b>100%</b> / «Πραγματικό μέγεθος», όχι «Προσαρμογή στη σελίδα». Στην πρώτη χρήση τυπώστε τη σελίδα δοκιμής και μετρήστε με χάρακα. Η προεπισκόπηση στην οθόνη δεν αρκεί για έλεγχο διαστάσεων.${roll ? ' Για θερμικό εκτυπωτή: κάθε λωρίδα γίνεται ξεχωριστή σελίδα PDF στο ακριβές μέγεθός της. Ανοίξτε το PDF από την εφαρμογή του εκτυπωτή.' : ''}</p>
   </section>
   <section class="preview" id="preview" aria-label="Προεπισκόπηση σελίδων"><p class="hint">Φόρτωση προεπισκόπησης…</p></section>
   <section class="panel">
@@ -511,33 +612,39 @@ async function makePdf(pages, filename, needLogo) {
   toast('Το PDF δημιουργήθηκε');
 }
 
-async function printPagesNow(pages, needLogo) {
+/* Εκτύπωση: φτιάχνει το ίδιο PDF με το κουμπί PDF (ίδιες διαστάσεις, ίδια εμφάνιση).
+ * Κινητό: ανοίγει το μενού κοινοποίησης, όπου υπάρχει «Εκτύπωση».
+ * Υπολογιστής: ανοίγει το PDF σε νέα καρτέλα, για εκτύπωση από εκεί σε «Πραγματικό μέγεθος».
+ * Δεν χρησιμοποιείται window.print(), που στα κινητά συχνά δεν ανοίγει ή παγώνει την εφαρμογή. */
+function openPrintWindow() {
+  if (isTouch()) return null;
+  let w = null;
+  try { w = window.open('', '_blank'); } catch (e) { w = null; }
+  if (w) {
+    try {
+      w.document.title = 'PanelLabels — εκτύπωση';
+      w.document.body.style.cssText = 'font:16px system-ui,sans-serif;padding:24px;color:#333';
+      w.document.body.textContent = 'Ετοιμάζεται το PDF για εκτύπωση…';
+    } catch (e) { }
+  }
+  return w;
+}
+async function printPdf(pages, filename, needLogo, win) {
   const logo = needLogo ? await loadImage(D().electrician.logo) : null;
   const ctx = renderCtx(logo);
-  const area = $('#printArea');
-  area.innerHTML = '';
-  const loads = [];
-  for (const pg of pages) {
-    const cv = renderPage(pg, 300, ctx, null);
-    const url = await new Promise(r => cv.toBlob(b => r(URL.createObjectURL(b)), 'image/png'));
-    cv.width = cv.height = 1;
-    const div = document.createElement('div');
-    div.className = 'pp';
-    div.style.width = pg.w + 'mm';
-    div.style.height = pg.h + 'mm';
-    const img = new Image();
-    loads.push(new Promise(r => { img.onload = r; img.onerror = r; }));
-    img.src = url;
-    div.appendChild(img);
-    area.appendChild(div);
+  let blob;
+  try { blob = await buildPdf(pages, async pg => renderPage(pg, 300, ctx, null)); }
+  catch (e) { if (win) try { win.close(); } catch (x) { } throw e; }
+  if (win && !win.closed) {
+    const url = URL.createObjectURL(blob);
+    win.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 5 * 60000);
+    toast('Το PDF άνοιξε σε νέα καρτέλα. Τυπώστε σε «Πραγματικό μέγεθος» / 100%.');
+    return;
   }
-  const first = pages[0];
-  $('#pageStyle').textContent = `@page { size: ${first.w}mm ${first.h}mm; margin: 0; }`;
-  await Promise.all(loads);
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => { area.querySelectorAll('img').forEach(i => URL.revokeObjectURL(i.src)); area.innerHTML = ''; }, 1500);
-  }, 50);
+  const res = await deliverFile(blob, filename, 'Στο μενού που θα ανοίξει επιλέξτε «Εκτύπωση».');
+  if (res === 'shared') toast('Επιλέξτε «Εκτύπωση» στο μενού κοινοποίησης');
+  else if (res === 'downloaded') toast('Το PDF κατέβηκε. Ανοίξτε το και τυπώστε σε 100%.');
 }
 
 /* ================= Οθόνη: Στοιχεία ηλεκτρολόγου ================= */
@@ -565,6 +672,7 @@ function viewInfo() {
       <label class="fld"><span>Πλάτος (mm)</span><input id="eW" data-sf="stickerW" type="number" inputmode="decimal" min="20" max="200" value="${st.stickerW}"></label>
       <label class="fld"><span>Ύψος (mm)</span><input id="eH" data-sf="stickerH" type="number" inputmode="decimal" min="10" max="150" value="${st.stickerH}"></label>
     </div>
+    ${colorPicker('sticker', 'bg', e.bg, BG_SWATCH, 'Φόντο αυτοκόλλητου')}
     <div class="preview" id="stickerPreview"></div>
     <div class="btn-row"><button class="btn primary" data-act="pdfSticker">PDF αυτοκόλλητου</button><button class="btn" data-act="printSticker">Εκτύπωση αυτοκόλλητου</button></div>
   </section>`;
@@ -787,25 +895,13 @@ const actions = {
     document.querySelectorAll('#symGrid .sym-btn').forEach(b => b.classList.toggle('on', b.dataset.sym === c.f.item.sym));
     rerenderRows();
   },
-  setColor: el => {
-    const c = sheetCtx(); if (!c) return;
-    c.f.item[el.dataset.k] = el.dataset.c;
-    commit();
-    reopenSheet();
-  },
-  colorsToRow: () => {
-    const c = sheetCtx(); if (!c) return;
-    c.f.row.items.forEach(i => COL_KEYS.forEach(k => { i[k] = c.f.item[k]; }));
-    commit();
-    rerenderRows();
-    revealItem(c.f.item.id);
-    toast(`Τα χρώματα εφαρμόστηκαν σε ${c.f.row.items.length} στοιχεία`);
-  },
+  pickColor: el => applyColor(el.dataset.g, el.dataset.k, el.dataset.c),
   colorsReset: () => {
-    const c = sheetCtx(); if (!c) return;
-    COL_KEYS.forEach(k => { c.f.item[k] = DEF_COL[k]; });
+    const p = currentProject(); if (!p) return;
+    p.colors = normColors(null);
     commit();
-    reopenSheet();
+    render();
+    toast('Επαναφορά σε λευκό φόντο και μαύρα στοιχεία');
   },
   mvLeft: () => moveItem(-1), mvRight: () => moveItem(1),
   mvUpRow: () => moveItemRow(-1), mvDownRow: () => moveItemRow(1),
@@ -831,13 +927,19 @@ const actions = {
     const p = currentProject();
     return makePdf(layoutLabelPages(p, S()), `${safeName(p.name)}-ετικέτες.pdf`, false);
   }),
-  printLabels: () => withBusy('Προετοιμασία εκτύπωσης…', () => {
-    if (S().pageMode === 'roll') toast('Για ρολό ετικετών προτιμήστε PDF: κάθε λωρίδα έχει δικό της μέγεθος.');
-    return printPagesNow(layoutLabelPages(currentProject(), S()), false);
-  }),
+  printLabels: () => {
+    if (UI.busy) return;
+    const win = openPrintWindow();
+    const p = currentProject();
+    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutLabelPages(p, S()), `${safeName(p.name)}-ετικέτες.pdf`, false, win));
+  },
   pdfCalib: () => withBusy('Δημιουργία σελίδας δοκιμής…', () => makePdf(layoutCalibration(S()), 'PanelLabels-δοκιμή-διαστάσεων.pdf', false)),
   pdfSticker: () => withBusy('Δημιουργία PDF…', () => makePdf(layoutStickerPages(S()), 'PanelLabels-αυτοκόλλητο.pdf', true)),
-  printSticker: () => withBusy('Προετοιμασία εκτύπωσης…', () => printPagesNow(layoutStickerPages(S()), true)),
+  printSticker: () => {
+    if (UI.busy) return;
+    const win = openPrintWindow();
+    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutStickerPages(S()), 'PanelLabels-αυτοκόλλητο.pdf', true, win));
+  },
   delLogo: () => { D().electrician.logo = ''; commit({ noTouch: true }); render(); },
   exportBackup,
   install: async () => {
@@ -897,15 +999,8 @@ document.addEventListener('input', e => {
     rerenderRows();
     return;
   }
-  if (t.dataset.colork) {
-    const c = sheetCtx(); if (!c) return;
-    if (!isHex(t.value)) return;
-    c.f.item[t.dataset.colork] = t.value.toLowerCase();
-    const lab = t.closest('.sw');
-    if (lab) { lab.style.setProperty('--c', t.value); document.querySelectorAll(`#sw-${t.dataset.colork} .sw`).forEach(b => b.classList.toggle('on', b === lab)); }
-    commit({ debounce: true });
-    rerenderRows();
-    revealItem(c.f.item.id);
+  if (t.dataset.pickg) {
+    if (isHex(t.value)) applyColor(t.dataset.pickg, t.dataset.pickk, t.value.toLowerCase(), t);
     return;
   }
   if (t.dataset.pf && p) {

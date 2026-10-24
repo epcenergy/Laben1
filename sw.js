@@ -1,6 +1,6 @@
 /* PanelLabels service worker: λειτουργία χωρίς internet.
- * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.1.1) ώστε οι συσκευές να πάρουν τα νέα αρχεία. */
-const CACHE = 'panellabels-1.1.0';
+ * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.2.1) ώστε οι συσκευές να πάρουν τα νέα αρχεία. */
+const CACHE = 'panellabels-1.2.0';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './render.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
