@@ -95,13 +95,14 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
   const iw = w - pad * 2;
   let top = y + pad, bottom = y + h - pad;
   const cx = x + w / 2;
-  ctx.fillStyle = '#000';
-  ctx.strokeStyle = '#000';
+  const fg = c.fg || '#000', sc = c.sc || '#000';
+  ctx.fillStyle = fg;
+  ctx.strokeStyle = sc;
 
   if (c.rating) {
     const fr = fitText(ctx, s, c.rating, iw, Math.min(2.4, h * 0.18), Math.min(2.2, h * 0.17), 1.2, 700);
     const rh = fr.lh * fr.lines.length;
-    if (!measureOnly) drawLines(ctx, s, fr, cx, bottom - rh, 700);
+    if (!measureOnly) { ctx.fillStyle = fg; drawLines(ctx, s, fr, cx, bottom - rh, 700); }
     bottom -= rh + 0.3;
   }
 
@@ -117,6 +118,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
     ctx.lineWidth = 1.9;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    ctx.strokeStyle = sc;
     ctx.stroke(sym);
     ctx.restore();
     }
@@ -130,6 +132,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
     if (measureOnly) return fit.f;
     if (fit.overflow && stats) stats.overflow++;
     const th = fit.lh * fit.lines.length;
+    ctx.fillStyle = fg;
     drawLines(ctx, s, fit, cx, top + (avail - th) / 2, 700);
   }
 }
@@ -146,29 +149,44 @@ function drawStrip(ctx, s, x, y, cells, h, unit, stats) {
     if (!c.blank && c.text && c.text.trim()) { const f = drawCell(ctx, s, mx, y, c.w * unit, h, c, null, 99, true); if (f) capF = Math.min(capF, f); }
     mx += c.w * unit;
   });
+  // 1. φόντα
   let cx = x;
+  cells.forEach(c => {
+    const cw = c.w * unit;
+    if (!c.blank && c.bg && c.bg !== '#ffffff') { ctx.fillStyle = c.bg; ctx.fillRect(cx * s, y * s, cw * s, h * s); }
+    cx += cw;
+  });
+  // 2. γκρι διαχωριστικά κενών θέσεων και εξωτερικό περίγραμμα (γραμμή κοπής)
+  cx = x;
+  ctx.lineWidth = Math.max(1, 0.18 * s);
+  cells.forEach((c, i) => {
+    cx += c.w * unit;
+    if (i === cells.length - 1 || !(c.blank && cells[i + 1].blank) && !(c.blank || cells[i + 1].blank)) return;
+    ctx.strokeStyle = '#b5b5b5';
+    ctx.beginPath(); ctx.moveTo(cx * s, y * s); ctx.lineTo(cx * s, (y + h) * s); ctx.stroke();
+  });
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = Math.max(1, 0.25 * s);
+  ctx.strokeRect(x * s, y * s, total * s, h * s);
+  // 3. περίγραμμα κάθε στοιχείου στο χρώμα του
+  cx = x;
+  const bw = Math.max(1, 0.25 * s);
+  cells.forEach(c => {
+    const cw = c.w * unit;
+    if (!c.blank) {
+      ctx.strokeStyle = c.bc || '#000';
+      ctx.lineWidth = bw;
+      ctx.strokeRect(cx * s + bw / 2, y * s + bw / 2, cw * s - bw, h * s - bw);
+    }
+    cx += cw;
+  });
+  // 4. περιεχόμενο
+  cx = x;
   cells.forEach(c => {
     const cw = c.w * unit;
     if (!c.blank) drawCell(ctx, s, cx, y, cw, h, c, stats, capF);
     cx += cw;
   });
-  // διαχωριστικά στοιχείων
-  cx = x;
-  cells.forEach((c, i) => {
-    cx += c.w * unit;
-    if (i === cells.length - 1) return;
-    const nextBlank = cells[i + 1].blank && c.blank;
-    ctx.strokeStyle = nextBlank ? '#b5b5b5' : '#000';
-    ctx.lineWidth = Math.max(1, 0.18 * s);
-    ctx.beginPath();
-    ctx.moveTo(cx * s, y * s);
-    ctx.lineTo(cx * s, (y + h) * s);
-    ctx.stroke();
-  });
-  // περίγραμμα = γραμμή κοπής
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = Math.max(1, 0.25 * s);
-  ctx.strokeRect(x * s, y * s, total * s, h * s);
 }
 
 /* ---------- Δεδομένα έργου → κελιά ---------- */
@@ -178,7 +196,8 @@ function buildRows(project, settings) {
   return project.rows.map((r, ri) => {
     const cells = r.items.map(i => ({
       w: i.w, text: i.text, rating: i.rating,
-      sym: settings.showSymbols ? i.sym : ''
+      sym: settings.showSymbols ? i.sym : '',
+      bg: i.bg, fg: i.fg, sc: i.sc, bc: i.bc
     }));
     const cap = +project.modulesPerRow || 0;
     if (project.fillEmpty && cap > 0) {
@@ -214,7 +233,7 @@ function layoutLabelPages(project, st) {
     const maxL = Math.max(unit * 6, +st.rollMax || 250);
     rows.forEach(r => splitCells(r.cells, unit, maxL).forEach(seg => {
       const w = stripWidth(seg, unit);
-      pages.push({ w, h: H, color: false, els: [{ t: 'strip', x: 0, y: 0, cells: seg, h: H }] });
+      pages.push({ w, h: H, color: true, els: [{ t: 'strip', x: 0, y: 0, cells: seg, h: H }] });
     }));
     return pages;
   }
@@ -222,7 +241,7 @@ function layoutLabelPages(project, st) {
   const M = 10, headH = 8, capH = st.showCaptions ? 4 : 0, gap = 4;
   const maxW = PW - 2 * M;
   let page = null, y = 0;
-  const newPage = () => { page = { w: PW, h: PH, color: false, els: [] }; pages.push(page); y = M + headH; };
+  const newPage = () => { page = { w: PW, h: PH, color: true, els: [] }; pages.push(page); y = M + headH; };
   newPage();
   rows.forEach(r => {
     const segs = splitCells(r.cells, unit, maxW);

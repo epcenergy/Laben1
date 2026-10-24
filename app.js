@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 const SUGGEST = ['Γενικός διακόπτης', 'Ρελέ διαρροής', 'Θερμοσίφωνας', 'Πρίζες κουζίνας', 'Φωτισμός σαλονιού',
@@ -17,6 +17,14 @@ const DEFAULT_SETTINGS = {
   stickerW: 80, stickerH: 40, stickerCopies: 1
 };
 const BACKUP_REMIND_DAYS = 7;
+/* Χρώματα στοιχείου: φόντο (bg), γράμματα (fg), σύμβολο (sc), περίγραμμα (bc) */
+const DEF_COL = { bg: '#ffffff', fg: '#000000', sc: '#000000', bc: '#000000' };
+const COL_KEYS = ['bg', 'fg', 'sc', 'bc'];
+const COL_LABEL = { bg: 'Φόντο', fg: 'Γράμματα', sc: 'Σύμβολο', bc: 'Περίγραμμα' };
+const BG_SWATCH = ['#ffffff', '#f1f3f5', '#fff3bf', '#ffe8cc', '#ffe3e3', '#d3f9d8', '#d0ebff', '#e5dbff',
+  '#ffd43b', '#ff922b', '#fa5252', '#40c057', '#339af0', '#212529'];
+const INK_SWATCH = ['#000000', '#495057', '#ffffff', '#e03131', '#f08c00', '#2f9e44', '#1971c2', '#7048e8'];
+const isHex = c => /^#[0-9a-f]{6}$/i.test(String(c || ''));
 
 /* Μελλοντικές συνδρομές: όλα τα δικαιώματα περνούν από εδώ. Στην έκδοση καταστήματος
  * το isPro() θα ελέγχει την αγορά (π.χ. RevenueCat / StoreKit / Play Billing) — τα έργα μένουν στη συσκευή. */
@@ -31,7 +39,9 @@ const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); retur
 /* ================= Δεδομένα ================= */
 function normItem(i) {
   i = i || {};
-  return { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || '') };
+  const o = { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || '') };
+  COL_KEYS.forEach(k => { o[k] = isHex(i[k]) ? i[k].toLowerCase() : DEF_COL[k]; });
+  return o;
 }
 function normRow(r) { r = r || {}; return { id: r.id || uid(), name: String(r.name || ''), items: (Array.isArray(r.items) ? r.items : []).map(normItem) }; }
 function normProject(p) {
@@ -115,6 +125,18 @@ function findItem(p, itemId) {
     if (ii >= 0) return { row: p.rows[ri], ri, ii, item: p.rows[ri].items[ii] };
   }
   return null;
+}
+
+/* Ελεύθερες θέσεις σειράς (Infinity αν δεν υπάρχει όριο). exceptItem: δεν μετράει αυτό το στοιχείο. */
+function rowFree(p, row, exceptItem) {
+  const cap = +p.modulesPerRow || 0;
+  if (!cap) return Infinity;
+  const used = row.items.reduce((a, i) => a + (i === exceptItem ? 0 : i.w), 0);
+  return Math.round((cap - used) * 2) / 2;
+}
+function fullMsg(p, row) {
+  const ri = p.rows.indexOf(row);
+  return `Η σειρά ${ri + 1} δεν έχει άλλο χώρο (${fmtUnits(rowUnits(row))}/${p.modulesPerRow} θέσεις).`;
 }
 
 let saveTimer = 0;
@@ -278,12 +300,14 @@ function rowHtml(p, r, ri) {
   const capCls = cap ? (used > cap ? 'over' : used === cap ? 'full' : '') : '';
   const cells = r.items.map(i => {
     const ph = !i.text.trim();
-    return `<button class="cell${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
+    return `<button class="cell item${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w};--bg:${i.bg};--fg:${i.fg};--sc:${i.sc};--bc:${i.bc}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
       <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(i.text)}</span>${i.rating ? `<span class="r">${esc(i.rating)}</span>` : ''}</button>`;
   }).join('');
+  const free = rowFree(p, r);
+  const canAdd = free >= 1;
   let empties = '';
   if (cap) {
-    let rem = Math.round((cap - used) * 2) / 2 - 1;
+    let rem = Math.round((cap - used) * 2) / 2 - (canAdd ? 1 : 0);
     while (rem >= 1) { empties += '<div class="cell empty" style="--w:1" aria-hidden="true"></div>'; rem -= 1; }
     if (rem > 0) empties += `<div class="cell empty" style="--w:${rem}" aria-hidden="true"></div>`;
   }
@@ -298,7 +322,8 @@ function rowHtml(p, r, ri) {
         <button class="btn icon ghost danger" data-act="rowDel" data-row="${r.id}" aria-label="Διαγραφή σειράς"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
       </div>
     </div>
-    <div class="strip-wrap"><div class="strip">${cells}<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>${empties}</div></div>
+    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
+    ${cap && !canAdd && used <= cap ? `<p class="hint">Η σειρά είναι γεμάτη.${free > 0 ? ' Περισσεύει μισή θέση.' : ''}</p>` : ''}
     ${cap && used > cap ? `<p class="row-warn">Η σειρά ξεπερνά τις ${cap} θέσεις κατά ${fmtUnits(used - cap)} μον.</p>` : ''}
   </article>`;
 }
@@ -307,7 +332,22 @@ function rerenderRows() {
   const p = currentProject();
   const el = $('#rows');
   if (!p || !el) return;
+  const keep = {};
+  el.querySelectorAll('[data-wrap]').forEach(w => { keep[w.dataset.wrap] = w.scrollLeft; });
   el.innerHTML = p.rows.map((r, ri) => rowHtml(p, r, ri)).join('');
+  el.querySelectorAll('[data-wrap]').forEach(w => { if (keep[w.dataset.wrap] != null) w.scrollLeft = keep[w.dataset.wrap]; });
+}
+/* Φέρνει στο οπτικό πεδίο της λωρίδας το στοιχείο (και το κουμπί «+» δίπλα του αν είναι το τελευταίο). */
+function revealItem(itemId) {
+  const cell = document.querySelector(`.cell[data-id="${itemId}"]`);
+  if (!cell) return;
+  const wrap = cell.closest('.strip-wrap');
+  let right = cell.offsetLeft + cell.offsetWidth;
+  const next = cell.nextElementSibling;
+  if (next && next.classList.contains('add')) right += next.offsetWidth;
+  const left = cell.offsetLeft;
+  if (right > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = right - wrap.clientWidth + 8;
+  else if (left < wrap.scrollLeft) wrap.scrollLeft = Math.max(0, left - 8);
 }
 
 /* ---------- Φύλλο στοιχείου ---------- */
@@ -318,29 +358,48 @@ function openSheet(itemId, focusText) {
   UI.sheetItem = itemId;
   const it = f.item;
   const sh = $('#sheet');
+  const freeHere = rowFree(p, f.row, it);
+  const prevRow = p.rows[f.ri - 1], nextRow = p.rows[f.ri + 1];
+  const swatches = k => (k === 'bg' ? BG_SWATCH : INK_SWATCH).map(c =>
+    `<button class="sw ${it[k] === c ? 'on' : ''}" style="--c:${c}" data-act="setColor" data-k="${k}" data-c="${c}" aria-label="${COL_LABEL[k]} ${c}"></button>`).join('');
+  const colorRow = k => `<div class="color-row"><span class="cl">${COL_LABEL[k]}</span><div class="sws" id="sw-${k}">${swatches(k)}
+      <label class="sw custom ${(k === 'bg' ? BG_SWATCH : INK_SWATCH).includes(it[k]) ? '' : 'on'}" style="--c:${it[k]}" title="Άλλο χρώμα"><input type="color" data-colork="${k}" value="${it[k]}" aria-label="Άλλο χρώμα για ${COL_LABEL[k]}"></label></div></div>`;
   sh.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Επεξεργασία στοιχείου">
     <div class="grab"></div>
     <div class="sheet-head"><h2>Σειρά ${f.ri + 1} · θέση ${f.ii + 1}</h2><button class="btn primary small" data-act="closeSheet">Έτοιμο</button></div>
     <label class="fld"><span>Περιγραφή</span><textarea id="itText" rows="2" placeholder="π.χ. Φωτισμός σαλονιού">${esc(it.text)}</textarea></label>
     <div class="chips" aria-label="Γρήγορες περιγραφές">${SUGGEST.map(s => `<button class="chip soft" data-act="suggest" data-text="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-    <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}">${fmtUnits(w)}</button>`).join('')}</div>
-      <span class="hint measure" id="wMM">${fmtMM(it.w * S().unitMM)} mm</span></div>
+    <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}" ${w > freeHere ? 'disabled' : ''}>${fmtUnits(w)}</button>`).join('')}</div>
+      <span class="hint measure" id="wMM">${fmtMM(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
     <label class="fld"><span>Ένδειξη (προαιρετικά)</span><input id="itRating" value="${esc(it.rating)}" placeholder="π.χ. 16A, C16, 40A 30mA" autocomplete="off"></label>
     <div class="fld"><span>Σύμβολο (προαιρετικό)</span><div class="sym-grid" id="symGrid">
       <button class="sym-btn ${!it.sym ? 'on' : ''}" data-act="setSym" data-sym=""><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg>Χωρίς</button>
       ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${it.sym === k ? 'on' : ''}" data-act="setSym" data-sym="${k}">${symSvg(k, '')}${esc(SYMBOLS[k].name)}</button>`).join('')}
     </div></div>
+    <div class="fld"><span>Χρώματα</span>${COL_KEYS.map(colorRow).join('')}
+      <div class="btn-row"><button class="btn small" data-act="colorsToRow">Ίδια χρώματα σε όλη τη σειρά</button><button class="btn small ghost" data-act="colorsReset">Προεπιλογή (λευκό/μαύρο)</button></div></div>
     <div class="fld"><span>Μετακίνηση</span><div class="move-grid">
       <button class="btn" data-act="mvLeft" ${f.ii === 0 ? 'disabled' : ''}>← Αριστερά</button>
       <button class="btn" data-act="mvRight" ${f.ii === f.row.items.length - 1 ? 'disabled' : ''}>Δεξιά →</button>
-      <button class="btn" data-act="mvUpRow" ${f.ri === 0 ? 'disabled' : ''}>↑ Στην προηγ. σειρά</button>
-      <button class="btn" data-act="mvDownRow" ${f.ri === p.rows.length - 1 ? 'disabled' : ''}>↓ Στην επόμ. σειρά</button>
+      <button class="btn" data-act="mvUpRow" ${!prevRow || rowFree(p, prevRow) < it.w ? 'disabled' : ''}>↑ Στην προηγ. σειρά</button>
+      <button class="btn" data-act="mvDownRow" ${!nextRow || rowFree(p, nextRow) < it.w ? 'disabled' : ''}>↓ Στην επόμ. σειρά</button>
     </div></div>
-    <div class="btn-row"><button class="btn" data-act="dupItem">Διπλότυπο</button><button class="btn danger" data-act="delItem">Διαγραφή στοιχείου</button></div>
+    <div class="btn-row"><button class="btn" data-act="dupItem" ${freeHere - it.w < it.w ? 'disabled' : ''}>Διπλότυπο</button><button class="btn danger" data-act="delItem">Διαγραφή στοιχείου</button></div>
   </div>`;
+  const prevScroll = UI.sheetScroll || 0;
   sh.hidden = false;
+  if (UI.sheetReopen) { const el = $('.sheet', sh); if (el) el.scrollTop = prevScroll; }
+  UI.sheetReopen = false;
   rerenderRows();
+  revealItem(itemId);
   if (focusText) setTimeout(() => $('#itText').focus(), 60);
+}
+function reopenSheet() {
+  const c = sheetCtx(); if (!c) return;
+  const el = $('#sheet .sheet');
+  UI.sheetScroll = el ? el.scrollTop : 0;
+  UI.sheetReopen = true;
+  openSheet(c.f.item.id, false);
 }
 function closeSheet(silent) {
   const sh = $('#sheet');
@@ -694,6 +753,7 @@ const actions = {
     const p = currentProject();
     const r = p.rows.find(x => x.id === el.dataset.row);
     if (!r) return;
+    if (rowFree(p, r) < 1) return toast(fullMsg(p, r), true);
     const it = normItem({ w: 1 });
     r.items.push(it);
     commit();
@@ -706,12 +766,16 @@ const actions = {
     c.f.item.text = el.dataset.text;
     if (!c.f.item.sym && SUGGEST_SYM[el.dataset.text]) c.f.item.sym = SUGGEST_SYM[el.dataset.text];
     commit();
-    openSheet(c.f.item.id, false);
+    reopenSheet();
   },
   setW: el => {
     const c = sheetCtx(); if (!c) return;
-    c.f.item.w = +el.dataset.w;
+    const w = +el.dataset.w;
+    if (w > rowFree(c.p, c.f.row, c.f.item)) return toast(fullMsg(c.p, c.f.row), true);
+    c.f.item.w = w;
     commit();
+    reopenSheet();
+    return;
     document.querySelectorAll('#wChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.w === c.f.item.w));
     $('#wMM').textContent = fmtMM(c.f.item.w * S().unitMM) + ' mm';
     rerenderRows();
@@ -723,10 +787,31 @@ const actions = {
     document.querySelectorAll('#symGrid .sym-btn').forEach(b => b.classList.toggle('on', b.dataset.sym === c.f.item.sym));
     rerenderRows();
   },
+  setColor: el => {
+    const c = sheetCtx(); if (!c) return;
+    c.f.item[el.dataset.k] = el.dataset.c;
+    commit();
+    reopenSheet();
+  },
+  colorsToRow: () => {
+    const c = sheetCtx(); if (!c) return;
+    c.f.row.items.forEach(i => COL_KEYS.forEach(k => { i[k] = c.f.item[k]; }));
+    commit();
+    rerenderRows();
+    revealItem(c.f.item.id);
+    toast(`Τα χρώματα εφαρμόστηκαν σε ${c.f.row.items.length} στοιχεία`);
+  },
+  colorsReset: () => {
+    const c = sheetCtx(); if (!c) return;
+    COL_KEYS.forEach(k => { c.f.item[k] = DEF_COL[k]; });
+    commit();
+    reopenSheet();
+  },
   mvLeft: () => moveItem(-1), mvRight: () => moveItem(1),
   mvUpRow: () => moveItemRow(-1), mvDownRow: () => moveItemRow(1),
   dupItem: () => {
     const c = sheetCtx(); if (!c) return;
+    if (rowFree(c.p, c.f.row) < c.f.item.w) return toast(fullMsg(c.p, c.f.row), true);
     const copy = normItem(Object.assign({}, c.f.item, { id: uid() }));
     c.f.row.items.splice(c.f.ii + 1, 0, copy);
     commit();
@@ -778,16 +863,17 @@ function moveItem(dir) {
   if (j < 0 || j >= items.length) return;
   [items[i], items[j]] = [items[j], items[i]];
   commit();
-  openSheet(c.f.item.id, false);
+  reopenSheet();
 }
 function moveItemRow(dir) {
   const c = sheetCtx(); if (!c) return;
   const target = c.p.rows[c.f.ri + dir];
   if (!target) return;
+  if (rowFree(c.p, target) < c.f.item.w) return toast(fullMsg(c.p, target), true);
   c.f.row.items.splice(c.f.ii, 1);
   target.items.push(c.f.item);
   commit();
-  openSheet(c.f.item.id, false);
+  reopenSheet();
 }
 
 /* ================= Συμβάντα ================= */
@@ -809,6 +895,17 @@ document.addEventListener('input', e => {
     if (t.id === 'itText') c.f.item.text = t.value; else c.f.item.rating = t.value;
     commit({ debounce: true });
     rerenderRows();
+    return;
+  }
+  if (t.dataset.colork) {
+    const c = sheetCtx(); if (!c) return;
+    if (!isHex(t.value)) return;
+    c.f.item[t.dataset.colork] = t.value.toLowerCase();
+    const lab = t.closest('.sw');
+    if (lab) { lab.style.setProperty('--c', t.value); document.querySelectorAll(`#sw-${t.dataset.colork} .sw`).forEach(b => b.classList.toggle('on', b === lab)); }
+    commit({ debounce: true });
+    rerenderRows();
+    revealItem(c.f.item.id);
     return;
   }
   if (t.dataset.pf && p) {
@@ -835,7 +932,13 @@ document.addEventListener('change', async e => {
   const t = e.target;
   const p = currentProject();
   if (t.dataset.pf === 'modulesPerRow' && p) {
-    p.modulesPerRow = clamp(Math.round(num(t.value, 0)), 0, 96);
+    const want = clamp(Math.round(num(t.value, 0)), 0, 96);
+    const bad = want ? p.rows.findIndex(r => rowUnits(r) > want) : -1;
+    if (bad >= 0) {
+      t.value = p.modulesPerRow;
+      return toast(`Η σειρά ${bad + 1} έχει ήδη ${fmtUnits(rowUnits(p.rows[bad]))} μονάδες. Αφαιρέστε ή μικρύνετε στοιχεία πριν μειώσετε τις θέσεις σε ${want}.`, true);
+    }
+    p.modulesPerRow = want;
     t.value = p.modulesPerRow;
     commit();
     rerenderRows();
