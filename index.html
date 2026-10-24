@@ -1,70 +1,51 @@
 <!doctype html>
 <html lang="el">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Δημιουργία και εκτύπωση ετικετών για ηλεκτρικούς πίνακες."><meta name="theme-color" content="#101828"><title>PanelLabels — Σήμανση ηλεκτρικών πινάκων</title>
-<style>
-:root{--bg:#f4f6f8;--panel:#fff;--ink:#17212b;--muted:#65717d;--line:#d8dee5;--blue:#175cd3;--blue2:#eaf1ff;--red:#b42318;--green:#067647}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{background:#101828;color:#fff;padding:18px max(16px,calc((100vw - 1180px)/2));display:flex;align-items:center;justify-content:space-between;gap:12px}header h1{font-size:20px;margin:0}header small{color:#cbd5e1}main{max-width:1180px;margin:auto;padding:18px;display:grid;grid-template-columns:310px minmax(0,1fr);gap:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}.panel h2{font-size:17px;margin:0 0 12px}.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}.field label{font-weight:650;font-size:13px}.field input,.field select,.field textarea,select,input,button{font:inherit}.field input,.field select,.field textarea{width:100%;border:1px solid #c8d0d9;border-radius:8px;padding:10px;background:#fff;color:var(--ink);min-width:0}.field textarea{resize:vertical;min-height:65px}.actions{display:flex;flex-wrap:wrap;gap:8px}.btn{border:1px solid #c8d0d9;border-radius:9px;padding:9px 12px;background:#fff;color:var(--ink);font-weight:650;cursor:pointer}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.danger{color:var(--red)}.btn:active{transform:translateY(1px)}.muted{color:var(--muted);font-size:12px}.status{margin-top:10px;font-size:12px;color:var(--green);min-height:18px}.project-row{display:flex;gap:7px}.project-row select{flex:1;min-width:0;border:1px solid #c8d0d9;border-radius:8px;padding:9px;background:white}.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}.topline h2{margin:0}.rows{display:flex;flex-direction:column;gap:14px}.board-row{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fbfcfe}.row-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.row-head strong{font-size:14px}.elements{display:flex;gap:6px;overflow-x:auto;padding:3px 2px 8px;align-items:stretch}.element{flex:0 0 auto;width:calc(var(--mods)*35px);min-width:35px;border:1px solid #7f8c9b;border-radius:5px;background:white;display:flex;flex-direction:column;overflow:hidden}.element .mod-head{background:#eef2f6;border-bottom:1px solid #c9d1da;padding:3px 5px;font-size:10px;color:#475467;display:flex;justify-content:space-between;gap:4px}.element .mod-head select{width:100%;border:0;background:transparent;font-size:11px;padding:0;outline:none}.element .symbol{font-size:19px;text-align:center;min-height:28px;padding-top:4px}.element textarea{border:0;border-top:1px solid #e2e7ed;border-radius:0;resize:none;text-align:center;min-height:46px;height:52px;padding:5px 3px;font-size:12px;line-height:1.2;outline:none;background:transparent;overflow:hidden}.element .remove{border:0;border-top:1px solid #eee;background:#fff;color:#b42318;font-size:11px;padding:3px;cursor:pointer}.print-area{background:#fff;border:1px dashed #b7c1cc;border-radius:10px;padding:14px;overflow-x:auto}.print-row{display:flex;align-items:stretch;margin:0 0 10px;gap:0;width:max-content;max-width:none}.print-label{height:12mm;border:.25mm solid #222;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden;padding:0.5mm;font-size:7pt;line-height:1.05;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere}.print-label .p-symbol{font-size:9pt;line-height:1;margin-bottom:.5mm}.contact-sticker{width:60mm;min-height:18mm;border:.3mm solid #222;display:flex;align-items:center;gap:2mm;padding:2mm;font-size:8pt;margin-top:12px;overflow:hidden}.contact-sticker img{max-width:15mm;max-height:14mm;object-fit:contain}.contact-sticker .contact-text{overflow-wrap:anywhere}.contact-sticker .contact-name{font-weight:700;font-size:9pt}.hidden{display:none!important}.footnote{background:#fff8e7;border:1px solid #f2d38a;padding:10px 12px;border-radius:9px;color:#7a4b00;font-size:12px;margin-top:14px}.mobile-tabs{display:none}
-@media(max-width:780px){main{grid-template-columns:1fr;padding:10px;gap:10px}header{padding:14px 16px}header h1{font-size:18px}.panel{padding:13px}.elements{padding-bottom:10px}.mobile-tabs{display:block}.element{width:calc(var(--mods)*31px)}.element textarea{font-size:11px}}
-@media print{@page{size:A4 portrait;margin:10mm}body{background:white;font-family:Arial,sans-serif;color:#000}header,.sidebar,.editor-panel .topline,.editor-panel .screen-only,.footnote,.status,.screen-only{display:none!important}main{display:block;max-width:none;margin:0;padding:0}.panel{border:0;padding:0;border-radius:0}.editor-panel{display:none!important}.print-area{border:0;border-radius:0;padding:0;overflow:visible}.print-row{break-inside:avoid;margin-bottom:5mm;max-width:none}.print-label{print-color-adjust:exact;-webkit-print-color-adjust:exact}.contact-sticker{break-inside:avoid;margin-top:8mm}}
-</style></head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PanelLabels</title>
+<meta name="description" content="Σχεδιασμός και εκτύπωση ετικετών ηλεκτρικών πινάκων">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="PanelLabels">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<style id="pageStyle"></style>
+</head>
 <body>
-<header><div><h1>PanelLabels</h1><small>Σήμανση ηλεκτρικών πινάκων</small></div><div class="muted" style="color:#cbd5e1">Δοκιμαστική έκδοση 0.1</div></header>
-<main>
-<aside class="panel sidebar">
-<h2>Έργο</h2>
-<div class="field"><label for="projectName">Όνομα έργου / πελάτη</label><input id="projectName" placeholder="π.χ. Διαμέρισμα Παπαδόπουλου"></div>
-<div class="actions"><button class="btn primary" id="saveProject">Αποθήκευση έργου</button><button class="btn" id="newProject">Νέο έργο</button></div>
-<div class="field" style="margin-top:14px"><label for="savedProjects">Ανοιγμα αποθηκευμένου έργου</label><div class="project-row"><select id="savedProjects"><option value="">Επιλογή έργου…</option></select><button class="btn" id="loadProject">Άνοιγμα</button></div></div>
-<div class="status" id="status" aria-live="polite"></div>
-<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-<h2>Στοιχεία ηλεκτρολόγου</h2>
-<div class="field"><label for="company">Επωνυμία / όνομα</label><input id="company" placeholder="Όνομα ηλεκτρολόγου"></div>
-<div class="field"><label for="phone">Τηλέφωνο</label><input id="phone" placeholder="Τηλέφωνο επικοινωνίας" inputmode="tel"></div>
-<div class="field"><label for="contactExtra">Επιπλέον στοιχεία (προαιρετικά)</label><input id="contactExtra" placeholder="π.χ. email ή ΑΦΜ"></div>
-<div class="field"><label for="logo">Λογότυπο (προαιρετικό)</label><input id="logo" type="file" accept="image/*"><span class="muted">Αποθηκεύεται τοπικά σε αυτή τη συσκευή.</span></div>
-<div class="field"><label><input type="checkbox" id="includeContact" checked style="width:auto;margin-right:6px">Εκτύπωση ξεχωριστού αυτοκόλλητου στοιχείων</label></div>
-<div class="actions"><button class="btn" id="saveContact">Αποθήκευση στοιχείων</button></div>
-<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-<h2>Αντίγραφο ασφαλείας</h2>
-<div class="actions"><button class="btn" id="exportData">Εξαγωγή δεδομένων</button><button class="btn" id="importButton">Εισαγωγή backup</button><input id="importFile" type="file" accept="application/json,.json" class="hidden"></div>
-<p class="muted">Τα έργα αποθηκεύονται μόνο σε αυτόν τον browser. Κάνε τακτικά εξαγωγή backup, ειδικά πριν καθαρίσεις τα δεδομένα του browser.</p>
-<div class="footnote">Πρωτότυπο δοκιμών: η εκτύπωση γίνεται μέσω του browser. Επίλεξε κλίμακα 100% / Actual size και απενεργοποίησε το «Fit to page». Οι τελικές διαστάσεις και οι εκτυπωτές θα χρειαστούν πρακτικό έλεγχο.</div>
-</aside>
-<section class="panel editor-panel">
-<div class="topline"><h2>Διάταξη πίνακα</h2><div class="actions screen-only"><button class="btn" id="addRow">+ Προσθήκη σειράς</button><button class="btn primary" id="printBtn">Εκτύπωση / PDF</button></div></div>
-<div class="field screen-only" style="max-width:260px"><label for="labelHeight">Ύψος ετικέτας</label><select id="labelHeight"><option value="10">10 mm</option><option value="12" selected>12 mm</option><option value="15">15 mm</option><option value="18">18 mm</option></select></div>
-<div id="rows" class="rows"></div>
-<div class="actions screen-only" style="margin-top:14px"><button class="btn" id="addRow2">+ Προσθήκη σειράς</button><button class="btn" id="addElement">+ Στοιχείο στην τελευταία σειρά</button></div>
-</section>
-<section class="panel print-panel"><div class="topline"><h2>Προεπισκόπηση εκτύπωσης</h2><span class="muted">Ονομαστικό πλάτος μονάδας: 17,5 mm</span></div><div class="print-area" id="printArea"></div><p class="muted screen-only" style="margin-bottom:0">Η προεπισκόπηση είναι ενδεικτική. Το πραγματικό αποτέλεσμα εξαρτάται από τον browser, τον εκτυπωτή και τις ρυθμίσεις χαρτιού.</p></section>
-</main>
-<script>
-(()=>{'use strict';
-const $=id=>document.getElementById(id);const KEY='panellabels_projects_v1',CONTACT='panellabels_contact_v1';
-const symbols=[['none','Χωρίς σύμβολο'],['⚡','Γενικός διακόπτης'],['◉','Ρελέ διαρροής'],['▣','Ασφάλεια'],['♨','Θερμοσίφωνας'],['⌂','Πρίζες'],['☼','Φωτισμός'],['❄','Κλιματισμός'],['⇧','Κουζίνα'],['◌','Αντλία'],['↗','Άλλο']];let rows=[{id:1,elements:[makeEl(1,'Γενικός')]}],nextRow=2,nextEl=2,logoData='';
-function makeEl(width=1,text='',symbol='none'){return{id:nextEl++,width,text,symbol}}
-function readRows(){return rows.map((r,i)=>({id:r.id,label:'Σειρά '+(i+1),elements:r.elements.map(e=>({...e}))}))}
-function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function render(){const host=$('rows');host.innerHTML='';rows.forEach((r,ri)=>{const box=document.createElement('div');box.className='board-row';box.innerHTML=`<div class="row-head"><strong>Σειρά ${ri+1}</strong><div class="actions"><button class="btn" data-add="${r.id}">+ Στοιχείο</button><button class="btn danger" data-delrow="${r.id}" ${rows.length===1?'disabled':''}>Διαγραφή σειράς</button></div></div><div class="elements" aria-label="Στοιχεία σειράς ${ri+1}"></div>`;const line=box.querySelector('.elements');r.elements.forEach(e=>{const el=document.createElement('div');el.className='element';el.style.setProperty('--mods',e.width);el.innerHTML=`<div class="mod-head"><span>${e.width}M</span><button class="remove" data-dele="${e.id}" title="Διαγραφή στοιχείου">×</button></div><div class="field" style="margin:0;padding:4px 4px 0"><select aria-label="Πλάτος στοιχείου" data-width="${e.id}">${[1,1.5,2,3,4,5,6].map(n=>`<option value="${n}" ${Number(e.width)===n?'selected':''}>${n} μον.</option>`).join('')}</select></div><select data-symbol="${e.id}" aria-label="Σύμβολο" style="border:0;background:transparent;font-size:11px;padding:3px;text-align:center;width:100%">${symbols.map(([v,t])=>`<option value="${v}" ${e.symbol===v?'selected':''}>${v==='none'?'—':v}</option>`).join('')}</select><textarea data-text="${e.id}" aria-label="Περιγραφή" placeholder="Περιγραφή">${escapeHtml(e.text)}</textarea><div class="muted" style="text-align:center;padding:2px">${(Number(e.width)*17.5).toLocaleString('el-GR')} mm</div>`;line.appendChild(el)});host.appendChild(box)});updatePrint();}
-function updatePrint(){const area=$('printArea');area.innerHTML='';const h=Number($('labelHeight').value)||12;rows.forEach(r=>{const line=document.createElement('div');line.className='print-row';r.elements.forEach(e=>{const lab=document.createElement('div');lab.className='print-label';lab.style.width=(Number(e.width)*17.5)+'mm';lab.style.height=h+'mm';const sym=e.symbol&&e.symbol!=='none'?`<div class="p-symbol">${escapeHtml(e.symbol)}</div>`:'';lab.innerHTML=sym+`<div>${escapeHtml(e.text)}</div>`;line.appendChild(lab)});area.appendChild(line)});if($('includeContact').checked&&($('company').value||$('phone').value||$('contactExtra').value||logoData)){const c=document.createElement('div');c.className='contact-sticker';c.style.display='flex';c.innerHTML=(logoData?`<img src="${logoData}" alt="Λογότυπο">`:'')+`<div class="contact-text"><div class="contact-name">${escapeHtml($('company').value)}</div><div>${escapeHtml($('phone').value)}</div><div>${escapeHtml($('contactExtra').value)}</div></div>`;area.appendChild(c)}}
-function snapshot(){return{version:1,name:$('projectName').value,rows:readRows(),labelHeight:$('labelHeight').value,includeContact:$('includeContact').checked,contact:{company:$('company').value,phone:$('phone').value,extra:$('contactExtra').value,logo:logoData},updatedAt:new Date().toISOString()}}
-function allProjects(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch{return{}}}function setStatus(t){$('status').textContent=t}
-function refreshProjectSelect(selected=''){const s=$('savedProjects'),p=allProjects();s.innerHTML='<option value="">Επιλογή έργου…</option>';Object.keys(p).sort((a,b)=>a.localeCompare(b,'el')).forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)});if(selected)s.value=selected}
-function saveProject(){const name=$('projectName').value.trim();if(!name){setStatus('Γράψε πρώτα όνομα έργου.');$('projectName').focus();return}const p=allProjects();p[name]=snapshot();try{localStorage.setItem(KEY,JSON.stringify(p));refreshProjectSelect(name);setStatus('Το έργο αποθηκεύτηκε σε αυτή τη συσκευή.')}catch(err){setStatus('Δεν έγινε αποθήκευση. Ίσως δεν υπάρχει αρκετός χώρος για το λογότυπο.')}}
-function loadProject(){const name=$('savedProjects').value,p=allProjects();if(!name||!p[name]){setStatus('Επίλεξε έργο.');return}const d=p[name];$('projectName').value=d.name||name;rows=(d.rows||[]).map(r=>({id:r.id||nextRow++,elements:(r.elements||[]).map(e=>({...e,id:e.id||nextEl++}))}));if(!rows.length)rows=[{id:nextRow++,elements:[makeEl()]}];nextRow=Math.max(nextRow,...rows.map(r=>r.id+1));nextEl=Math.max(nextEl,...rows.flatMap(r=>r.elements.map(e=>e.id+1)),1);$('labelHeight').value=d.labelHeight||12;$('includeContact').checked=d.includeContact!==false;if(d.contact){$('company').value=d.contact.company||'';$('phone').value=d.contact.phone||'';$('contactExtra').value=d.contact.extra||'';logoData=d.contact.logo||''}render();setStatus('Το έργο άνοιξε.')}
-function newProject(){if(!confirm('Νέο έργο; Αποθήκευσε πρώτα τις αλλαγές αν τις χρειάζεσαι.'))return;$('projectName').value='';rows=[{id:nextRow++,elements:[makeEl(1,'')]}];render();setStatus('Δημιουργήθηκε νέο έργο.')}
-function addRow(){rows.push({id:nextRow++,elements:[makeEl(1,'')]});render()}
-function addElement(rowId){const r=rows.find(x=>x.id===Number(rowId))||rows[rows.length-1];r.elements.push(makeEl(1,''));render()}
-$('rows').addEventListener('input',e=>{const t=e.target;if(t.dataset.text){const el=rows.flatMap(r=>r.elements).find(x=>x.id===Number(t.dataset.text));if(el)el.text=t.value;updatePrint()} });
-$('rows').addEventListener('change',e=>{const t=e.target;if(t.dataset.width){const el=rows.flatMap(r=>r.elements).find(x=>x.id===Number(t.dataset.width));if(el)el.width=Number(t.value);render()}if(t.dataset.symbol){const el=rows.flatMap(r=>r.elements).find(x=>x.id===Number(t.dataset.symbol));if(el)el.symbol=t.value;updatePrint()}});
-$('rows').addEventListener('click',e=>{const a=e.target.closest('[data-add]'),d=e.target.closest('[data-dele]'),dr=e.target.closest('[data-delrow]');if(a)addElement(a.dataset.add);if(d){rows.forEach(r=>r.elements=r.elements.filter(x=>x.id!==Number(d.dataset.dele)));rows=rows.map(r=>({...r,elements:r.elements.length?r.elements:[makeEl(1,'')]}));render()}if(dr&&rows.length>1){rows=rows.filter(r=>r.id!==Number(dr.dataset.delrow));render()}});
-$('addRow').onclick=$('addRow2').onclick=addRow;$('addElement').onclick=()=>addElement();$('saveProject').onclick=saveProject;$('loadProject').onclick=loadProject;$('newProject').onclick=newProject;$('printBtn').onclick=()=>window.print();$('labelHeight').onchange=updatePrint;$('includeContact').onchange=updatePrint;
-['company','phone','contactExtra'].forEach(id=>$(id).addEventListener('input',updatePrint));$('saveContact').onclick=()=>{const d={company:$('company').value,phone:$('phone').value,extra:$('contactExtra').value,logo:logoData};try{localStorage.setItem(CONTACT,JSON.stringify(d));setStatus('Τα στοιχεία ηλεκτρολόγου αποθηκεύτηκαν.')}catch{setStatus('Δεν έγινε αποθήκευση των στοιχείων.')}updatePrint()};
-$('logo').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(f.size>1500000){setStatus('Το λογότυπο πρέπει να είναι κάτω από 1,5 MB.');e.target.value='';return}const rd=new FileReader();rd.onload=()=>{logoData=rd.result;updatePrint();setStatus('Το λογότυπο φορτώθηκε. Πάτησε «Αποθήκευση στοιχείων».')};rd.readAsDataURL(f)};
-$('exportData').onclick=()=>{const data={format:'PanelLabels-backup-v1',projects:allProjects(),contact:{company:$('company').value,phone:$('phone').value,extra:$('contactExtra').value,logo:logoData}};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='PanelLabels-backup.json';a.click();URL.revokeObjectURL(a.href);setStatus('Το αρχείο backup δημιουργήθηκε.')};
-$('importButton').onclick=()=>$('importFile').click();$('importFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);if(d.format!=='PanelLabels-backup-v1'||!d.projects)throw Error('format');if(!confirm('Η εισαγωγή θα ενώσει τα έργα του backup με τα υπάρχοντα. Αν έχουν ίδιο όνομα, θα αντικατασταθούν. Συνέχεια;'))return;const p=allProjects();Object.assign(p,d.projects);localStorage.setItem(KEY,JSON.stringify(p));if(d.contact){logoData=d.contact.logo||'';$('company').value=d.contact.company||'';$('phone').value=d.contact.phone||'';$('contactExtra').value=d.contact.extra||'';localStorage.setItem(CONTACT,JSON.stringify(d.contact))}refreshProjectSelect();updatePrint();setStatus('Το backup εισήχθη.')}catch{setStatus('Το αρχείο δεν είναι έγκυρο PanelLabels backup.')}finally{$('importFile').value=''}};rd.readAsText(f)};
-try{const c=JSON.parse(localStorage.getItem(CONTACT)||'null');if(c){$('company').value=c.company||'';$('phone').value=c.phone||'';$('contactExtra').value=c.extra||'';logoData=c.logo||''}}catch{}refreshProjectSelect();render();
-})();
-</script>
-</body></html>
+<header class="topbar">
+  <div class="topbar-in">
+    <img class="brand-logo" src="icons/logo-128.png" alt="" width="34" height="34">
+    <div class="brand-text">
+      <strong>PanelLabels</strong>
+      <span id="topProject">Ετικέτες ηλεκτρικών πινάκων</span>
+    </div>
+    <span id="saveState" class="save-state" aria-live="polite"></span>
+  </div>
+</header>
+
+<main id="app" class="app" tabindex="-1"></main>
+
+<nav class="tabbar" aria-label="Κύριες ενότητες">
+  <div class="tabbar-in">
+    <a href="#projects" data-tab="projects"><svg viewBox="0 0 24 24"><path d="M3 6.5h7l2 2h9v10.5H3z"/></svg><span>Έργα</span></a>
+    <a href="#editor" data-tab="editor"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 12h18M8 5v14M13 5v14"/></svg><span>Πίνακας</span></a>
+    <a href="#print" data-tab="print"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg><span>Εκτύπωση</span></a>
+    <a href="#info" data-tab="info"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8zM4 21c1-4 4-6 8-6s7 2 8 6"/></svg><span>Στοιχεία</span></a>
+    <a href="#backup" data-tab="backup"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 17v4h16v-4"/></svg><span>Αντίγραφα</span></a>
+  </div>
+</nav>
+
+<div id="sheet" class="overlay" hidden></div>
+<div id="modal" class="overlay center" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="printArea" aria-hidden="true"></div>
+
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
