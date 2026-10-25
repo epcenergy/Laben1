@@ -326,6 +326,7 @@ function layoutLabelPages(project, st) {
       const w = stripWidth(seg, unit);
       pages.push({ w, h: H, color: true, els: [{ t: 'strip', x: 0, y: 0, cells: seg, h: H }] });
     }));
+    if (st.printSticker) pages.push({ w: +st.stickerW, h: +st.stickerH, color: true, els: [{ t: 'sticker', x: 0, y: 0, w: +st.stickerW, h: +st.stickerH }] });
     return pages;
   }
   const [PW, PH] = st.pageMode === 'a4p' ? [210, 297] : [297, 210];
@@ -350,14 +351,106 @@ function layoutLabelPages(project, st) {
       y += need + gap;
     });
   });
+  // Στοιχεία ηλεκτρολόγου σαν μία ακόμα σειρά στην ίδια κόλλα (σε πραγματικό μέγεθος)
+  if (st.printSticker) {
+    const sw = +st.stickerW, sh = +st.stickerH;
+    let target = page, ty = y;
+    const fitsW = sw <= PW - 2 * M + 0.01;
+    if (!fitsW) { // πιο φαρδύ από την κόλλα: δική του οριζόντια σελίδα
+      target = { w: 297, h: 210, color: true, els: [] }; pages.push(target); ty = M + headH;
+    } else if (ty + capH + sh > PH - M && target.els.length) { newPage(); target = page; ty = y; }
+    if (capH) target.els.push({ t: 'caption', x: M, y: ty, text: `Στοιχεία ηλεκτρολόγου  ·  ${fmtMM(sw)} × ${fmtMM(sh)} mm` });
+    target.els.push({ t: 'sticker', x: M, y: ty + capH, w: sw, h: sh });
+    if (target === page) y = ty + capH + sh + gap;
+  }
   const n = pages.length;
   const date = new Date().toLocaleDateString('el-GR');
   pages.forEach((p, i) => p.els.unshift({
-    t: 'header', x: M, y: M, w: PW - 2 * M,
+    t: 'header', x: M, y: M, w: p.w - 2 * M,
     left: project.name + (project.address ? '  —  ' + project.address : ''),
     right: `Μονάδα ${fmtMM(unit)} mm · ύψος ${fmtMM(H)} mm · ${date} · σελ. ${i + 1}/${n}`
   }));
   if (!rows.length) pages[0].els.push({ t: 'note', x: M, y: M + headH + 4, text: 'Το έργο δεν έχει ακόμη στοιχεία.' });
+  return pages;
+}
+
+/* Όλες οι σελίδες της εκτύπωσης ετικετών: ετικέτες (+ στοιχεία ηλεκτρολόγου) + λίστα κυκλωμάτων (A4 κάθετη). */
+function layoutPrintJob(project, st, electrician) {
+  const pages = layoutLabelPages(project, st);
+  if (st.printList) pages.push(...layoutListPages(project, st, electrician));
+  return pages;
+}
+
+/* Λίστα κυκλωμάτων: A4 κάθετη, αριθμημένη, ανά σειρά πίνακα, χωρίς σύμβολα. */
+function layoutListPages(project, st, electrician) {
+  const PW = 210, PH = 297, M = 15, rowH = 7.2, grpH = 9;
+  const showRat = st.listRating !== false, showUnits = st.listUnits !== false;
+  const right = PW - M;
+  const cols = { no: M, desc: M + 13, units: right - 22, rat: right - (showUnits ? 50 : 28) };
+  const descEnd = showRat ? cols.rat - 3 : showUnits ? cols.units - 3 : right;
+  const pages = [];
+  let page = null, y = 0;
+  const T = (x, yy, text, o) => page.els.push(Object.assign({ t: 'txt', x, y: yy, text }, o || {}));
+  const L = (yy, o) => page.els.push(Object.assign({ t: 'hline', x1: M, x2: PW - M, y: yy }, o || {}));
+  const colHead = () => {
+    T(cols.no, y + 4.6, 'Α/Α', { size: 3, bold: true, color: '#555' });
+    T(cols.desc, y + 4.6, 'Περιγραφή', { size: 3, bold: true, color: '#555' });
+    if (showRat) T(cols.rat, y + 4.6, 'Ένδειξη', { size: 3, bold: true, color: '#555' });
+    if (showUnits) T(cols.units, y + 4.6, 'Μονάδες', { size: 3, bold: true, color: '#555' });
+    y += 6.5; L(y, { w: 0.35 });
+  };
+  const newPage = first => {
+    page = { w: PW, h: PH, color: !!(first && st.listSticker), els: [] }; pages.push(page);
+    y = M;
+    if (first && st.listSticker) {
+      // το αυτοκόλλητο ηλεκτρολόγου όπως είναι αποθηκευμένο, στην κορυφή (μικραίνει μόνο αν δεν χωράει)
+      const sw0 = +st.stickerW || 80, sh0 = +st.stickerH || 40;
+      const k = Math.min(1, (PW - 2 * M) / sw0, 70 / sh0);
+      page.els.push({ t: 'sticker', x: M, y, w: sw0 * k, h: sh0 * k });
+      y += sh0 * k + 6;
+    }
+    if (first) {
+      T(M, y + 7, 'Λίστα κυκλωμάτων', { size: 7, bold: true });
+      y += 11;
+      T(M, y + 4.5, project.name, { size: 4.6, bold: true, max: PW - 2 * M });
+      y += 6.5;
+      const sub = [project.address, new Date().toLocaleDateString('el-GR')].filter(Boolean).join('  ·  ');
+      T(M, y + 3.6, sub, { size: 3.4, color: '#444', max: PW - 2 * M });
+      y += 5.5;
+      const e = electrician || {};
+      const who = [e.name, e.phone ? 'Τηλ. ' + e.phone : '', e.email].filter(Boolean).join('  ·  ');
+      if (who && !st.listSticker) { T(M, y + 3.6, 'Ηλεκτρολόγος: ' + who, { size: 3.4, color: '#444', max: PW - 2 * M }); y += 5.5; }
+      y += 3;
+    } else {
+      T(M, y + 4, project.name + '  —  λίστα κυκλωμάτων (συνέχεια)', { size: 3.4, bold: true, color: '#444', max: PW - 2 * M }); y += 7;
+    }
+    L(y, { w: 0.5 });
+    colHead();
+  };
+  newPage(true);
+  let no = 0;
+  const rowsData = project.rows.filter(r => r.items.length);
+  rowsData.forEach(r => {
+    const ri = project.rows.indexOf(r);
+    if (y + grpH + rowH > PH - M - 8) newPage(false);
+    page.els.push({ t: 'band', x: M, y: y + 0.6, w: PW - 2 * M, h: grpH - 1.2 });
+    T(M + 2, y + 6, `Σειρά ${ri + 1}${r.name ? '  —  ' + r.name : ''}`, { size: 3.6, bold: true, max: PW - 2 * M - 4 });
+    y += grpH;
+    r.items.forEach(it => {
+      if (y + rowH > PH - M - 8) newPage(false);
+      no++;
+      T(cols.no, y + 4.9, String(no) + '.', { size: 3.8, bold: true });
+      T(cols.desc, y + 4.9, it.text.trim() || '—', { size: 3.8, max: descEnd - cols.desc });
+      if (showRat) T(cols.rat, y + 4.9, it.rating || '', { size: 3.6, max: (showUnits ? cols.units : right) - cols.rat - 3 });
+      if (showUnits) T(cols.units, y + 4.9, fmtUnits(it.w), { size: 3.6 });
+      y += rowH;
+      L(y, { w: 0.15, color: '#bbb' });
+    });
+  });
+  if (!no) { T(M, y + 8, 'Το έργο δεν έχει ακόμη στοιχεία.', { size: 3.6 }); }
+  else { y += 4; if (y + 6 < PH - M - 6) T(M, y + 4, `Σύνολο: ${no} ${no === 1 ? 'κύκλωμα' : 'κυκλώματα'}`, { size: 3.4, bold: true, color: '#444' }); }
+  const n = pages.length;
+  pages.forEach((p, i) => p.els.push({ t: 'txt', x: PW - M, y: PH - 8, text: `σελ. ${i + 1}/${n}`, size: 2.8, color: '#666', align: 'right' }));
   return pages;
 }
 
@@ -575,6 +668,28 @@ function renderPage(page, dpi, ctxData, stats) {
       ctx.fillText(el.text, el.x * s, el.y * s);
     } else if (el.t === 'sticker') { ctxLogoSize.v = st.logoSize || 100; drawSticker(ctx, s, el.x, el.y, el.w, el.h, ctxData.electrician, ctxData.logo, stats); }
     else if (el.t === 'calib') drawCalibration(ctx, s, st);
+    else if (el.t === 'txt') {
+      ctx.fillStyle = el.color || '#000';
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = el.align || 'left';
+      ctx.font = `${el.bold ? 700 : 400} ${((el.size || 3.5) * s).toFixed(2)}px ${LABEL_FONT}`;
+      let text = String(el.text);
+      if (el.max) {
+        const m = measureCtx(); m.font = `${el.bold ? 700 : 400} ${((el.size || 3.5) * REF_S).toFixed(2)}px ${LABEL_FONT}`;
+        if (m.measureText(text).width > el.max * REF_S) {
+          while (text.length && m.measureText(text + '…').width > el.max * REF_S) text = text.slice(0, -1);
+          text += '…';
+        }
+      }
+      ctx.fillText(text, el.x * s, el.y * s);
+    } else if (el.t === 'hline') {
+      ctx.strokeStyle = el.color || '#000';
+      ctx.lineWidth = Math.max(1, (el.w || 0.2) * s);
+      ctx.beginPath(); ctx.moveTo(el.x1 * s, el.y * s); ctx.lineTo(el.x2 * s, el.y * s); ctx.stroke();
+    } else if (el.t === 'band') {
+      ctx.fillStyle = '#ececec';
+      ctx.fillRect(el.x * s, el.y * s, el.w * s, el.h * s);
+    }
   });
   return cv;
 }

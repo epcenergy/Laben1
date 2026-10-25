@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.9.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
@@ -21,7 +21,7 @@ const OLD_DEFAULT_CATS = ['Γενικός διακόπτης', 'Γενική α�
   'Πρίζες κουζίνας', 'Πρίζες υπνοδωματίων', 'Θερμοσίφωνας', 'Κουζίνα', 'Κλιματιστικό', 'Πλυντήριο', 'Εφεδρικό'];
 const DEFAULT_SETTINGS = {
   unitMM: 17.5, labelH: 12, pageMode: 'a4l', showSymbols: true, showCaptions: true, rollMax: 250,
-  stickerW: 80, stickerH: 40, stickerCopies: 1, logoSize: 100, theme: 'auto'
+  stickerW: 80, stickerH: 40, stickerCopies: 1, logoSize: 100, theme: 'auto', printSticker: false, printList: false, listRating: true, listUnits: true, listSticker: false
 };
 const BACKUP_REMIND_DAYS = 7;
 const STICKER_MAX_W = 277;
@@ -622,7 +622,16 @@ function viewPrint() {
       <label class="check"><input type="checkbox" id="sSym" data-sf="showSymbols" ${st.showSymbols ? 'checked' : ''}>Σύμβολα</label>
       <label class="check"><input type="checkbox" id="sFill" data-pf2="fillEmpty" ${p.fillEmpty ? 'checked' : ''}>Κενές θέσεις</label>
       ${!roll ? `<label class="check"><input type="checkbox" id="sCap" data-sf="showCaptions" ${st.showCaptions ? 'checked' : ''}>Τίτλοι σειρών</label>` : ''}
+      <label class="check"><input type="checkbox" id="sStk" data-sf="printSticker" ${st.printSticker ? 'checked' : ''}>Στοιχεία ηλεκτρολόγου</label>
+      <label class="check"><input type="checkbox" id="sList" data-sf="printList" ${st.printList ? 'checked' : ''}>Λίστα κυκλωμάτων (A4)</label>
     </div>
+    ${st.printList ? `<div class="checks sub" aria-label="Επιλογές λίστας">
+      <span class="sub-l">Στη λίστα:</span>
+      <label class="check"><input type="checkbox" id="lRat" data-sf="listRating" ${st.listRating ? 'checked' : ''}>Ένδειξη</label>
+      <label class="check"><input type="checkbox" id="lUnits" data-sf="listUnits" ${st.listUnits ? 'checked' : ''}>Μονάδες</label>
+      <label class="check"><input type="checkbox" id="lStk" data-sf="listSticker" ${st.listSticker ? 'checked' : ''}>Στοιχεία ηλεκτρολόγου πάνω</label>
+    </div>` : ''}
+    ${st.printSticker && !(D().electrician.name || D().electrician.phone || D().electrician.logo) ? '<p class="hint">Δεν έχετε συμπληρώσει στοιχεία ηλεκτρολόγου (☰ → Στοιχεία ηλεκτρολόγου).</p>' : ''}
     <button class="btn primary big" data-act="printLabels"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση / PDF</button>
     <p class="hint center">Τυπώστε σε κλίμακα <b>100%</b>.</p>
     <p class="row-warn" id="printWarn" hidden></p>
@@ -652,6 +661,7 @@ function freeCanvases(box) {
   box.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
 }
 
+function needsLogo() { const st = S(); return !!(st.printSticker || (st.printList && st.listSticker)); }
 function schedulePreview(delay) {
   clearTimeout(UI.previewTimer);
   UI.previewTimer = setTimeout(renderPreview, delay == null ? 250 : delay);
@@ -663,7 +673,9 @@ async function renderPreview() {
   const p = currentProject();
   if (!box || !p) return;
   const st = S();
-  const pages = layoutLabelPages(p, st);
+  const pages = layoutPrintJob(p, st, D().electrician);
+  const logo = needsLogo() ? await loadImage(D().electrician.logo) : null;
+  if (!$('#preview')) return;
   const stats = { overflow: 0 };
   const width = Math.max(240, box.clientWidth - 28);
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -673,11 +685,14 @@ async function renderPreview() {
     totalStrips += pg.els.filter(e => e.t === 'strip').length;
     let dpi = (width * dpr) / (pg.w / MM_PER_IN);
     if (st.pageMode === 'roll') dpi = Math.min(dpi, 220 * dpr);
-    const cv = renderPage(pg, Math.min(dpi, 300), renderCtx(null), stats);
-    if (st.pageMode === 'roll') { cv.classList.add('roll'); cv.style.width = Math.min(width, pg.w / MM_PER_IN * 96 * 1.4) + 'px'; }
+    if (pg.h > pg.w && st.pageMode !== 'a4p' && st.pageMode !== 'roll') dpi = dpi * 0.72; // κάθετη σελίδα λίστας: λίγο μικρότερη στην οθόνη
+    const cv = renderPage(pg, Math.min(dpi, 300), renderCtx(logo), stats);
+    if (st.pageMode === 'roll' && !pg.els.some(e => e.t === 'txt')) { cv.classList.add('roll'); cv.style.width = Math.min(width, pg.w / MM_PER_IN * 96 * 1.4) + 'px'; }
     const cap = document.createElement('div');
     cap.className = 'pcap';
-    cap.textContent = st.pageMode === 'roll' ? `Ετικέτα ${i + 1}/${pages.length} · ${fmtMM(pg.w)} × ${fmtMM(pg.h)} mm` : `Σελίδα ${i + 1}/${pages.length} · A4 ${st.pageMode === 'a4p' ? 'κάθετη' : 'οριζόντια'}`;
+    const isA4 = (pg.w === 210 && pg.h === 297) || (pg.w === 297 && pg.h === 210);
+    const what = pg.els.some(e => e.t === 'txt') ? 'Λίστα κυκλωμάτων · ' : '';
+    cap.textContent = isA4 ? `Σελίδα ${i + 1}/${pages.length} · ${what}A4 ${pg.h > pg.w ? 'κάθετη' : 'οριζόντια'}` : `Ετικέτα ${i + 1}/${pages.length} · ${fmtMM(pg.w)} × ${fmtMM(pg.h)} mm`;
     frag.appendChild(cap);
     frag.appendChild(cv);
   });
@@ -1120,13 +1135,13 @@ const actions = {
   },
   pdfLabels: () => withBusy('Δημιουργία PDF…', () => {
     const p = currentProject();
-    return makePdf(layoutLabelPages(p, S()), `${safeName(p.name)}-ετικέτες.pdf`, false);
+    return makePdf(layoutPrintJob(p, S(), D().electrician), `${safeName(p.name)}-ετικέτες.pdf`, needsLogo());
   }),
   printLabels: () => {
     if (UI.busy) return;
     const win = openPrintWindow();
     const p = currentProject();
-    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutLabelPages(p, S()), `${safeName(p.name)}-ετικέτες.pdf`, false, win));
+    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutPrintJob(p, S(), D().electrician), `${safeName(p.name)}-ετικέτες.pdf`, needsLogo(), win));
   },
   pdfCalib: () => withBusy('Δημιουργία σελίδας δοκιμής…', () => makePdf(layoutCalibration(S()), `${APP_NAME}-δοκιμή-διαστάσεων.pdf`, false)),
   printCalib: () => {
@@ -1268,7 +1283,7 @@ document.addEventListener('change', async e => {
     if ((k === 'stickerW' || k === 'stickerH') && S()[k] !== asked) toast(`Το αυτοκόλλητο χωράει έως 277 × 190 mm σε A4. Μπήκε ${fmtMM(S()[k])} mm.`, true);
     t.type !== 'checkbox' && k !== 'pageMode' && (t.value = S()[k]);
     commit({ noTouch: true });
-    if (UI.view === 'print') { if (k === 'pageMode') render(); else schedulePreview(); }
+    if (UI.view === 'print') { if (k === 'pageMode' || k === 'printSticker' || k === 'printList') render(); else schedulePreview(); }
     if (UI.view === 'info') renderStickerPreview();
     return;
   }
