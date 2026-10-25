@@ -367,10 +367,16 @@ function layoutStickerPages(st) {
   if (st.pageMode === 'roll') {
     return Array.from({ length: copies }, () => ({ w, h, color: true, els: [{ t: 'sticker', x: 0, y: 0, w, h }] }));
   }
-  const PW = 210, PH = 297, M = 10, g = 4;
-  const cols = Math.max(1, Math.floor((PW - 2 * M + g) / (w + g)));
-  const rowsN = Math.max(1, Math.floor((PH - 2 * M + g) / (h + g)));
-  const per = cols * rowsN;
+  // A4 κάθετη ή οριζόντια: όποια χωράει το αυτοκόλλητο και βάζει περισσότερα ανά σελίδα
+  const M = 10, g = 4;
+  const fit = (PW, PH) => {
+    if (w > PW - 2 * M + 0.01 || h > PH - 2 * M + 0.01) return null;
+    const cols = Math.floor((PW - 2 * M + g) / (w + g)), rows = Math.floor((PH - 2 * M + g) / (h + g));
+    return { PW, PH, cols, rowsN: rows, per: cols * rows };
+  };
+  const opts = [fit(210, 297), fit(297, 210)].filter(Boolean);
+  const best = opts.sort((a, b) => b.per - a.per)[0] || { PW: 297, PH: 210, cols: 1, rowsN: 1, per: 1 };
+  const { PW, PH, cols, rowsN, per } = best;
   const pages = [];
   for (let k = 0; k < copies; k++) {
     if (k % per === 0) pages.push({ w: PW, h: PH, color: true, els: [] });
@@ -387,6 +393,7 @@ function layoutCalibration(st) {
 }
 
 /* ---------- Αυτοκόλλητο ---------- */
+const ctxLogoSize = { v: 100 };
 function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
   const r = Math.min(3, h * 0.1);
   ctx.save();
@@ -403,13 +410,17 @@ function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
 
   const pad = Math.min(3, h * 0.1);
   let tx = x + pad, tw = w - 2 * pad;
+  const hasText = !!(e.name || e.phone || e.email || e.extra);
   if (logoImg) {
-    const box = Math.min(h - 2 * pad, w * 0.38);
-    const k = Math.min(box / logoImg.width, box / logoImg.height);
+    // το λογότυπο κρατά τις αναλογίες του· μεγαλώνει με το αυτοκόλλητο και με τη ρύθμιση «Μέγεθος λογότυπου»
+    const scale = Math.min(1, Math.max(0.2, (+ctxLogoSize.v || 100) / 100));
+    const maxW = hasText ? (w - 2 * pad) * 0.6 : w - 2 * pad, maxH = h - 2 * pad;
+    const k = Math.min(maxW / logoImg.width, maxH / logoImg.height) * scale;
     const lw = logoImg.width * k, lh = logoImg.height * k;
-    ctx.drawImage(logoImg, (x + pad + (box - lw) / 2) * s, (y + (h - lh) / 2) * s, lw * s, lh * s);
-    tx += box + pad;
-    tw -= box + pad;
+    const lx = hasText ? x + pad : x + (w - lw) / 2;
+    ctx.drawImage(logoImg, lx * s, (y + (h - lh) / 2) * s, lw * s, lh * s);
+    tx += lw + pad;
+    tw -= lw + pad;
   }
   const lines = [];
   if (e.name) lines.push({ text: e.name, k: 1.45, wt: 700 });
@@ -562,7 +573,7 @@ function renderPage(page, dpi, ctxData, stats) {
       ctx.font = `400 ${3.4 * s}px ${LABEL_FONT}`;
       ctx.textAlign = 'left';
       ctx.fillText(el.text, el.x * s, el.y * s);
-    } else if (el.t === 'sticker') drawSticker(ctx, s, el.x, el.y, el.w, el.h, ctxData.electrician, ctxData.logo, stats);
+    } else if (el.t === 'sticker') { ctxLogoSize.v = st.logoSize || 100; drawSticker(ctx, s, el.x, el.y, el.w, el.h, ctxData.electrician, ctxData.logo, stats); }
     else if (el.t === 'calib') drawCalibration(ctx, s, st);
   });
   return cv;

@@ -1,6 +1,6 @@
 /* EPC service worker: λειτουργία χωρίς internet.
  * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.5.1) ώστε οι συσκευές να πάρουν τα νέα αρχεία. */
-const CACHE = 'panellabels-1.5.2';
+const CACHE = 'panellabels-1.7.0';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './render.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png',

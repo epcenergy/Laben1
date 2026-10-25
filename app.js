@@ -5,21 +5,26 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.7.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
 const DEFAULT_CATS = [
   ['Γενικός διακόπτης', 'main'], ['Γενική ασφάλεια', 'mcb'], ['Ρελέ διαρροής', 'rcd'],
-  ['Φωτισμός', 'light'], ['Φωτισμός σαλονιού', 'light'], ['Πρίζες', 'socket'], ['Πρίζες κουζίνας', 'socket'],
-  ['Πρίζες υπνοδωματίων', 'socket'], ['Θερμοσίφωνας', 'heater'], ['Κουζίνα', 'cooker'], ['Κλιματιστικό', 'ac'],
-  ['Πλυντήριο', 'washer'], ['Εφεδρικό', '']
+  ['Πρίζες φώτα δωμάτιο 1', 'lightsocket'], ['Πρίζες φώτα δωμάτιο 2', 'lightsocket'], ['Πρίζες φώτα σαλόνι', 'lightsocket'],
+  ['Κλιματιστικό', 'ac'], ['Πλυντήριο', 'washer'], ['Θερμοσίφωνας', 'heater'], ['Εξωτερικός χώρος', 'outdoor'],
+  ['Λέβητας', 'boiler'], ['Κουζίνα', 'cooker']
 ];
+const CATS_VERSION = 2;
+/* Η αρχική λίστα των εκδόσεων έως 1.5 (για να ξεχωρίζουν οι κατηγορίες που πρόσθεσε ο χρήστης) */
+const OLD_DEFAULT_CATS = ['Γενικός διακόπτης', 'Γενική ασφάλεια', 'Ρελέ διαρροής', 'Φωτισμός', 'Φωτισμός σαλονιού', 'Πρίζες',
+  'Πρίζες κουζίνας', 'Πρίζες υπνοδωματίων', 'Θερμοσίφωνας', 'Κουζίνα', 'Κλιματιστικό', 'Πλυντήριο', 'Εφεδρικό'];
 const DEFAULT_SETTINGS = {
   unitMM: 17.5, labelH: 12, pageMode: 'a4l', showSymbols: true, showCaptions: true, rollMax: 250,
-  stickerW: 80, stickerH: 40, stickerCopies: 1, theme: 'auto'
+  stickerW: 80, stickerH: 40, stickerCopies: 1, logoSize: 100, theme: 'auto'
 };
 const BACKUP_REMIND_DAYS = 7;
+const STICKER_MAX_W = 277;
 /* Χρώματα στοιχείου: φόντο (bg), γράμματα (fg), σύμβολο (sc), περίγραμμα (bc) */
 const DEF_COL = { bg: '#ffffff', fg: '#000000', sc: '#000000', bc: '#000000' };
 const COL_KEYS = ['bg', 'fg', 'sc', 'bc'];
@@ -81,8 +86,11 @@ function normalize(d) {
   s.unitMM = clamp(num(s.unitMM, 17.5), 10, 30);
   s.labelH = clamp(num(s.labelH, 12), 6, 40);
   s.rollMax = clamp(num(s.rollMax, 250), 40, 2000);
-  s.stickerW = clamp(num(s.stickerW, 80), 20, 200);
-  s.stickerH = clamp(num(s.stickerH, 40), 10, 150);
+  // μέγιστο: ό,τι χωράει σε A4 (οριζόντια 277 × 190 mm μέσα στα περιθώρια)
+  s.stickerW = clamp(num(s.stickerW, 80), 20, STICKER_MAX_W);
+  s.stickerH = clamp(num(s.stickerH, 40), 10, STICKER_MAX_W);
+  if (s.stickerW > 190 && s.stickerH > 190) s.stickerH = 190;
+  s.logoSize = clamp(Math.round(num(s.logoSize, 100)), 20, 100);
   s.stickerCopies = clamp(Math.round(num(s.stickerCopies, 1)), 1, 200);
   if (!['a4l', 'a4p', 'roll'].includes(s.pageMode)) s.pageMode = 'a4l';
   if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto';
@@ -102,7 +110,16 @@ function normalize(d) {
       e.fg = isHex(e.fg) ? e.fg.toLowerCase() : textOnBg(e.bg);
       return e;
     })(Object.assign({ name: '', phone: '', email: '', extra: '', logo: '' }, d.electrician || {})),
-    categories: Array.isArray(d.categories) ? d.categories.map(normCat).filter(c => c.name.trim()) : defaultCats(),
+    categories: (() => {
+      if (!Array.isArray(d.categories)) return defaultCats();
+      const cats = d.categories.map(normCat).filter(c => c.name.trim());
+      if (d.catsVersion === CATS_VERSION) return cats;
+      // νέα αρχική λίστα: αντικαθιστά την παλιά, κρατά στο τέλος όσες κατηγορίες πρόσθεσε ο χρήστης
+      const fresh = defaultCats();
+      const known = new Set([...OLD_DEFAULT_CATS, ...DEFAULT_CATS.map(c => c[0])].map(catKey));
+      return fresh.concat(cats.filter(c => !known.has(catKey(c.name))));
+    })(),
+    catsVersion: CATS_VERSION,
     settings: s,
     lastProjectId: d.lastProjectId || null,
     lastBackup: d.lastBackup || null,
@@ -748,9 +765,12 @@ function viewInfo() {
   <section class="panel">
     <h2>Αυτοκόλλητο</h2>
     <div class="grid2">
-      <label class="fld"><span>Πλάτος (mm)</span><input id="eW" data-sf="stickerW" type="number" inputmode="decimal" min="20" max="200" value="${st.stickerW}"></label>
-      <label class="fld"><span>Ύψος (mm)</span><input id="eH" data-sf="stickerH" type="number" inputmode="decimal" min="10" max="150" value="${st.stickerH}"></label>
+      <label class="fld"><span>Πλάτος (mm)</span><input id="eW" data-sf="stickerW" type="number" inputmode="decimal" min="20" max="277" value="${st.stickerW}"></label>
+      <label class="fld"><span>Ύψος (mm)</span><input id="eH" data-sf="stickerH" type="number" inputmode="decimal" min="10" max="277" value="${st.stickerH}"></label>
     </div>
+    ${e.logo ? `<label class="fld"><span>Μέγεθος λογότυπου: <b id="logoSizeVal">${st.logoSize}%</b></span>
+      <input id="eLogoSize" class="range" data-sf="logoSize" type="range" min="20" max="100" step="5" value="${st.logoSize}"></label>` : ''}
+    <p class="hint">Μέγιστο μέγεθος: 277 × 190 mm (A4 οριζόντια).</p>
     ${colorPicker('sticker', 'bg', e.bg, BG_SWATCH, 'Φόντο')}
     ${colorPicker('sticker', 'fg', e.fg, INK_SWATCH, 'Γράμματα')}
     <div class="preview" id="stickerPreview"></div>
@@ -1189,6 +1209,13 @@ document.addEventListener('input', e => {
     rerenderRows();
     return;
   }
+  if (t.id === 'eLogoSize') {
+    S().logoSize = clamp(Math.round(num(t.value, 100)), 20, 100);
+    const v = $('#logoSizeVal'); if (v) v.textContent = S().logoSize + '%';
+    commit({ debounce: true, noTouch: true });
+    renderStickerPreview(30);
+    return;
+  }
   if (t.dataset.pickg) {
     if (isHex(t.value)) applyColor(t.dataset.pickg, t.dataset.pickk, t.value.toLowerCase(), t);
     return;
@@ -1236,7 +1263,9 @@ document.addEventListener('change', async e => {
     if (t.type === 'checkbox') st[k] = t.checked;
     else if (k === 'pageMode') st[k] = t.value;
     else st[k] = num(t.value, DEFAULT_SETTINGS[k]);
+    const asked = st[k];
     Store.data = normalize(Store.data); // επιβολή ορίων
+    if ((k === 'stickerW' || k === 'stickerH') && S()[k] !== asked) toast(`Το αυτοκόλλητο χωράει έως 277 × 190 mm σε A4. Μπήκε ${fmtMM(S()[k])} mm.`, true);
     t.type !== 'checkbox' && k !== 'pageMode' && (t.value = S()[k]);
     commit({ noTouch: true });
     if (UI.view === 'print') { if (k === 'pageMode') render(); else schedulePreview(); }

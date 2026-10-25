@@ -381,3 +381,5 @@ svg.symv path.f { fill: currentColor; stroke: none; }
 .cell .sym.symv { color: #111; }
 .cell.item .sym.symv { color: var(--sc, #111); stroke: currentColor; }
 .cell .sym { width: 30px; height: 30px; }
+
+input.range { width: 100%; accent-color: var(--accent); min-height: 36px; }
