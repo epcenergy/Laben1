@@ -369,3 +369,8 @@ details.more:not([open]) { gap: 0; }
 .cat-chip { display: inline-flex; align-items: center; gap: 6px; }
 .cat-chip .csym { width: 18px; height: 18px; }
 @media (max-width: 600px) { .save-state { visibility: hidden; width: 0; overflow: hidden; } }
+
+/* σύμβολα: μόνο εικονίδια */
+.sym-grid.icons { grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
+.sym-grid.icons .sym-btn { min-height: 54px; padding: 0; aspect-ratio: 1; }
+.sym-grid.icons .sym-btn svg { width: 30px; height: 30px; stroke-width: 1.8; }

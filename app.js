@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
@@ -86,6 +86,13 @@ function normalize(d) {
   s.stickerCopies = clamp(Math.round(num(s.stickerCopies, 1)), 1, 200);
   if (!['a4l', 'a4p', 'roll'].includes(s.pageMode)) s.pageMode = 'a4l';
   if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto';
+  // Χρώματα ετικετών: κοινά για όλα τα έργα. Από έκδοση 1.3 (ανά έργο) παίρνουμε του τελευταίου ανοιχτού έργου.
+  if (!s.labelColors) {
+    const projs = Array.isArray(d.projects) ? d.projects : [];
+    const last = projs.find(p => p && p.id === d.lastProjectId) || projs.find(p => p && p.colors);
+    s.labelColors = last ? normProject(last).colors : null;
+  }
+  s.labelColors = normColors(s.labelColors);
   return {
     schema: 1,
     projects: (Array.isArray(d.projects) ? d.projects : []).map(normProject).filter(Boolean),
@@ -409,7 +416,7 @@ function rowHtml(p, r, ri) {
         <button class="btn icon ghost danger" data-act="rowDel" data-row="${r.id}" aria-label="Διαγραφή σειράς"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
       </div>
     </div>
-    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip" style="--bg:${p.colors.bg};--fg:${p.colors.fg};--sc:${p.colors.sc};--bc:${p.colors.bc}">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
+    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip" style="--bg:${S().labelColors.bg};--fg:${S().labelColors.fg};--sc:${S().labelColors.sc};--bc:${S().labelColors.bc}">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
     ${cap && !canAdd && used <= cap ? `<p class="hint">Η σειρά είναι γεμάτη.${free > 0 ? ' Περισσεύει μισή θέση.' : ''}</p>` : ''}
     ${cap && used > cap ? `<p class="row-warn">Η σειρά ξεπερνά τις ${cap} θέσεις κατά ${fmtUnits(used - cap)} μον.</p>` : ''}
   </article>`;
@@ -437,6 +444,14 @@ function revealItem(itemId) {
   else if (left < wrap.scrollLeft) wrap.scrollLeft = Math.max(0, left - 8);
 }
 
+/* Πλέγμα συμβόλων: μόνο εικονίδια (το όνομα φαίνεται ως υπόδειξη / για ανάγνωση οθόνης) */
+function symGridHtml(id, act, current) {
+  return `<div class="sym-grid icons" id="${id}">
+    <button class="sym-btn ${!current ? 'on' : ''}" data-act="${act}" data-sym="" title="Χωρίς σύμβολο" aria-label="Χωρίς σύμβολο"><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg></button>
+    ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${current === k ? 'on' : ''}" data-act="${act}" data-sym="${k}" title="${esc(SYMBOLS[k].name)}" aria-label="${esc(SYMBOLS[k].name)}">${symSvg(k, '')}</button>`).join('')}
+  </div>`;
+}
+
 /* ---------- Φύλλο στοιχείου ---------- */
 function openSheet(itemId, focusText) {
   const p = currentProject();
@@ -455,10 +470,7 @@ function openSheet(itemId, focusText) {
     <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}" ${w > freeHere ? 'disabled' : ''}>${fmtUnits(w)}</button>`).join('')}</div>
       <span class="hint measure" id="wMM">${fmtMM(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
     <label class="fld"><span>Ένδειξη (προαιρετικά)</span><input id="itRating" value="${esc(it.rating)}" placeholder="π.χ. 16A, C16, 40A 30mA" autocomplete="off"></label>
-    <div class="fld"><span>Σύμβολο (προαιρετικό)</span><div class="sym-grid" id="symGrid">
-      <button class="sym-btn ${!it.sym ? 'on' : ''}" data-act="setSym" data-sym=""><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg>Χωρίς</button>
-      ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${it.sym === k ? 'on' : ''}" data-act="setSym" data-sym="${k}">${symSvg(k, '')}${esc(SYMBOLS[k].name)}</button>`).join('')}
-    </div></div>
+    <div class="fld"><span>Σύμβολο (προαιρετικό)</span>${symGridHtml('symGrid', 'setSym', it.sym)}</div>
     <div class="fld"><span>Μετακίνηση</span><div class="move-grid">
       <button class="btn" data-act="mvLeft" ${f.ii === 0 ? 'disabled' : ''}>← Αριστερά</button>
       <button class="btn" data-act="mvRight" ${f.ii === f.row.items.length - 1 ? 'disabled' : ''}>Δεξιά →</button>
@@ -503,9 +515,9 @@ function colorPicker(group, key, value, palette, label) {
 function applyColor(group, key, c, inputEl) {
   if (!isHex(c)) return;
   if (group === 'label') {
-    const p = currentProject(); if (!p || !COL_KEYS.includes(key)) return;
-    p.colors[key] = c;
-    commit({ debounce: !!inputEl });
+    if (!COL_KEYS.includes(key)) return;
+    S().labelColors[key] = c;
+    commit({ debounce: !!inputEl, noTouch: true });
     renderColorPreview(inputEl ? 120 : 0);
   } else if (group === 'sticker') {
     if (key !== 'bg' && key !== 'fg') return;
@@ -528,11 +540,9 @@ function applyColor(group, key, c, inputEl) {
 }
 
 function viewColors() {
-  const p = currentProject();
-  if (!p) return `<div class="panel empty-state"><h2>Δεν έχει ανοίξει έργο</h2><p>Τα χρώματα ορίζονται για κάθε έργο. Ανοίξτε ένα έργο πρώτα.</p><a class="btn primary" href="#projects">Λίστα έργων</a></div>`;
-  const c = p.colors;
-  return `<div class="view-head"><div><div class="eyebrow">Χρώματα ετικετών · έργο</div><h1>${esc(p.name)}</h1></div></div>
-  <p class="lead">Ισχύουν για όλες τις ετικέτες αυτού του έργου. Για άλλο χρώμα πατήστε τον τελευταίο κύκλο.</p>
+  const c = S().labelColors;
+  return `<div class="view-head"><div><div class="eyebrow">Χρώματα ετικετών</div><h1>Για όλα τα έργα</h1></div></div>
+  <p class="lead">Ισχύουν για όλες τις ετικέτες, και στα καινούρια έργα. Για άλλο χρώμα πατήστε τον τελευταίο κύκλο.</p>
   <section class="panel">
     ${colorPicker('label', 'bg', c.bg, BG_SWATCH, 'Φόντο ετικέτας')}
     ${colorPicker('label', 'fg', c.fg, INK_SWATCH, 'Γραμματοσειρά')}
@@ -553,10 +563,10 @@ function renderColorPreview(delay) {
   colorTimer = setTimeout(() => {
     const box = $('#colorPreview');
     const p = currentProject();
-    if (!box || !p) return;
+    if (!box) return;
     const st = S(), unit = +st.unitMM, H = +st.labelH;
-    let rows = buildRows(p, st).slice(0, 2);
-    if (!rows.length) rows = [{ cells: [{ w: 2, text: 'Γενικός διακόπτης', sym: 'main', rating: '40A' }, { w: 1, text: 'Φωτισμός', sym: 'light', rating: '10A' }, { w: 1, text: 'Πρίζες', sym: 'socket', rating: '16A' }].map(x => Object.assign(x, p.colors)) }];
+    let rows = p ? buildRows(p, st).slice(0, 2) : [];
+    if (!rows.length) rows = [{ cells: [{ w: 2, text: 'ΓΕΝΙΚΟΣ ΔΙΑΚΟΠΤΗΣ', sym: 'main', rating: '40A' }, { w: 1, text: 'ΦΩΤΙΣΜΟΣ', sym: 'light', rating: '10A' }, { w: 1, text: 'ΠΡΙΖΕΣ', sym: 'socket', rating: '16A' }].map(x => Object.assign(x, st.labelColors)) }];
     const width = Math.max(200, box.clientWidth - 28);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     freeCanvases(box);
@@ -813,10 +823,7 @@ function openCatSheet(catId) {
     <div class="grab"></div>
     <div class="sheet-head"><h2>${cat ? 'Επεξεργασία κατηγορίας' : 'Νέα κατηγορία'}</h2><button class="btn primary small" data-act="saveCat">Αποθήκευση</button></div>
     <label class="fld"><span>Όνομα</span><input id="catName" value="${esc(UI.catEdit.name)}" placeholder="π.χ. Κλιματιστικό κουζίνας" autocomplete="off" maxlength="80"></label>
-    <div class="fld"><span>Σύμβολο</span><div class="sym-grid" id="catSymGrid">
-      <button class="sym-btn ${!UI.catEdit.sym ? 'on' : ''}" data-act="catSym" data-sym=""><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg>Χωρίς</button>
-      ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${UI.catEdit.sym === k ? 'on' : ''}" data-act="catSym" data-sym="${k}">${symSvg(k, '')}${esc(SYMBOLS[k].name)}</button>`).join('')}
-    </div></div>
+    <div class="fld"><span>Σύμβολο</span>${symGridHtml('catSymGrid', 'catSym', UI.catEdit.sym)}</div>
     <div class="btn-row">${cat ? '<button class="btn danger" data-act="delCat">Διαγραφή κατηγορίας</button>' : ''}<button class="btn ghost" data-act="closeSheet">Άκυρο</button></div>
   </div>`;
   sh.hidden = false;
@@ -1066,9 +1073,8 @@ const actions = {
   },
   pickColor: el => applyColor(el.dataset.g, el.dataset.k, el.dataset.c),
   colorsReset: () => {
-    const p = currentProject(); if (!p) return;
-    p.colors = normColors(null);
-    commit();
+    S().labelColors = normColors(null);
+    commit({ noTouch: true });
     render();
     toast('Επαναφορά σε λευκό φόντο και μαύρα στοιχεία');
   },
