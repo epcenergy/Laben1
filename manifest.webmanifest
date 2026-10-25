@@ -1,6 +1,6 @@
 {
-  "name": "EPC",
-  "short_name": "EPC",
+  "name": "EPC Label",
+  "short_name": "EPC Label",
   "description": "Σχεδιασμός και εκτύπωση ετικετών ηλεκτρικών πινάκων",
   "lang": "el",
   "start_url": "./",

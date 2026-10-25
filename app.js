@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.2';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */

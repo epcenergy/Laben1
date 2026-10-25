@@ -374,3 +374,10 @@ details.more:not([open]) { gap: 0; }
 .sym-grid.icons { grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
 .sym-grid.icons .sym-btn { min-height: 54px; padding: 0; aspect-ratio: 1; }
 .sym-grid.icons .sym-btn svg { width: 30px; height: 30px; stroke-width: 1.8; }
+
+/* σύμβολα έκδοση 2: λεπτή γραμμή + γεμάτα κομμάτια */
+svg.symv { stroke-width: 1.4 !important; }
+svg.symv path.f { fill: currentColor; stroke: none; }
+.cell .sym.symv { color: #111; }
+.cell.item .sym.symv { color: var(--sc, #111); stroke: currentColor; }
+.cell .sym { width: 30px; height: 30px; }
