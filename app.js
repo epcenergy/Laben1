@@ -1,29 +1,32 @@
-/* PanelLabels — app.js
+/* EPC (PanelLabels) — app.js
  * Λογική εφαρμογής: δεδομένα (τοπική αποθήκευση), οθόνες, επεξεργασία, εκτύπωση, αντίγραφα ασφαλείας.
  * Χωρίς server και χωρίς εξωτερικές βιβλιοθήκες.
  */
 'use strict';
 
-const APP_VERSION = '1.2.0';
+const APP_NAME = 'EPC';
+const APP_VERSION = '1.3.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
-const SUGGEST = ['Γενικός διακόπτης', 'Ρελέ διαρροής', 'Θερμοσίφωνας', 'Πρίζες κουζίνας', 'Φωτισμός σαλονιού',
-  'Κλιματιστικό', 'Πλυντήριο', 'Πρίζες υπνοδωματίων', 'Κουζίνα', 'Φωτισμός', 'Πρίζες', 'Εφεδρικό'];
-const SUGGEST_SYM = { 'Γενικός διακόπτης': 'main', 'Ρελέ διαρροής': 'rcd', 'Θερμοσίφωνας': 'heater', 'Πρίζες κουζίνας': 'socket',
-  'Φωτισμός σαλονιού': 'light', 'Κλιματιστικό': 'ac', 'Πλυντήριο': 'washer', 'Πρίζες υπνοδωματίων': 'socket', 'Κουζίνα': 'cooker',
-  'Φωτισμός': 'light', 'Πρίζες': 'socket' };
+/* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
+const DEFAULT_CATS = [
+  ['Γενικός διακόπτης', 'main'], ['Γενική ασφάλεια', 'mcb'], ['Ρελέ διαρροής', 'rcd'],
+  ['Φωτισμός', 'light'], ['Φωτισμός σαλονιού', 'light'], ['Πρίζες', 'socket'], ['Πρίζες κουζίνας', 'socket'],
+  ['Πρίζες υπνοδωματίων', 'socket'], ['Θερμοσίφωνας', 'heater'], ['Κουζίνα', 'cooker'], ['Κλιματιστικό', 'ac'],
+  ['Πλυντήριο', 'washer'], ['Εφεδρικό', '']
+];
 const DEFAULT_SETTINGS = {
   unitMM: 17.5, labelH: 12, pageMode: 'a4l', showSymbols: true, showCaptions: true, rollMax: 250,
-  stickerW: 80, stickerH: 40, stickerCopies: 1
+  stickerW: 80, stickerH: 40, stickerCopies: 1, theme: 'auto'
 };
 const BACKUP_REMIND_DAYS = 7;
 /* Χρώματα στοιχείου: φόντο (bg), γράμματα (fg), σύμβολο (sc), περίγραμμα (bc) */
 const DEF_COL = { bg: '#ffffff', fg: '#000000', sc: '#000000', bc: '#000000' };
 const COL_KEYS = ['bg', 'fg', 'sc', 'bc'];
-const COL_LABEL = { bg: 'Φόντο', fg: 'Γράμματα', sc: 'Σύμβολο', bc: 'Περίγραμμα' };
-const BG_SWATCH = ['#ffffff', '#f1f3f5', '#fff3bf', '#ffe8cc', '#ffe3e3', '#d3f9d8', '#d0ebff', '#e5dbff',
-  '#ffd43b', '#ff922b', '#fa5252', '#40c057', '#339af0', '#212529'];
-const INK_SWATCH = ['#000000', '#495057', '#ffffff', '#e03131', '#f08c00', '#2f9e44', '#1971c2', '#7048e8'];
+/* Βασικά χρώματα: λευκό/μαύρο + πορτοκαλί, κόκκινο, πράσινο, μπλε. Ό,τι άλλο, από τον κύκλο «άλλο χρώμα» (τέρμα δεξιά). */
+const BG_SWATCH = ['#ffffff', '#f08c00', '#e03131', '#2f9e44', '#1971c2'];
+const INK_SWATCH = ['#000000', '#f08c00', '#e03131', '#2f9e44', '#1971c2'];
+const SWATCH_NAME = { '#ffffff': 'Λευκό', '#000000': 'Μαύρο', '#f08c00': 'Πορτοκαλί', '#e03131': 'Κόκκινο', '#2f9e44': 'Πράσινο', '#1971c2': 'Μπλε' };
 const isHex = c => /^#[0-9a-f]{6}$/i.test(String(c || ''));
 
 /* Μελλοντικές συνδρομές: όλα τα δικαιώματα περνούν από εδώ. Στην έκδοση καταστήματος
@@ -50,6 +53,17 @@ function normColors(c, items) {
   COL_KEYS.forEach(k => { o[k] = isHex(c[k]) ? c[k].toLowerCase() : DEF_COL[k]; });
   return o;
 }
+function normCat(c) {
+  c = c || {};
+  return { id: c.id || uid(), name: String(c.name || '').slice(0, 80), sym: SYMBOLS[c.sym] ? c.sym : '' };
+}
+/* Σύγκριση ονομάτων χωρίς τόνους/πεζά-κεφαλαία/διπλά κενά */
+function catKey(n) { return upGreek(n).replace(/\s+/g, ' ').trim(); }
+function defaultCats() { return DEFAULT_CATS.map(([name, sym]) => normCat({ name, sym })); }
+function textOnBg(bg) {
+  const n = parseInt(String(bg).slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+  return (0.2126 * R + 0.7152 * G + 0.0722 * B) / 255 < 0.5 ? '#ffffff' : '#000000';
+}
 function normProject(p) {
   if (!p || typeof p !== 'object') return null;
   const rawItems = (Array.isArray(p.rows) ? p.rows : []).flatMap(r => (r && Array.isArray(r.items)) ? r.items : []);
@@ -71,10 +85,17 @@ function normalize(d) {
   s.stickerH = clamp(num(s.stickerH, 40), 10, 150);
   s.stickerCopies = clamp(Math.round(num(s.stickerCopies, 1)), 1, 200);
   if (!['a4l', 'a4p', 'roll'].includes(s.pageMode)) s.pageMode = 'a4l';
+  if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto';
   return {
     schema: 1,
     projects: (Array.isArray(d.projects) ? d.projects : []).map(normProject).filter(Boolean),
-    electrician: (e => { e.bg = isHex(e.bg) ? e.bg.toLowerCase() : '#ffffff'; return e; })(Object.assign({ name: '', phone: '', email: '', extra: '', logo: '', bg: '#ffffff' }, d.electrician || {})),
+    electrician: (e => {
+      e.bg = isHex(e.bg) ? e.bg.toLowerCase() : '#ffffff';
+      // έκδοση 1.2: τα γράμματα έπαιρναν αυτόματα λευκό σε σκούρο φόντο
+      e.fg = isHex(e.fg) ? e.fg.toLowerCase() : textOnBg(e.bg);
+      return e;
+    })(Object.assign({ name: '', phone: '', email: '', extra: '', logo: '' }, d.electrician || {})),
+    categories: Array.isArray(d.categories) ? d.categories.map(normCat).filter(c => c.name.trim()) : defaultCats(),
     settings: s,
     lastProjectId: d.lastProjectId || null,
     lastBackup: d.lastBackup || null,
@@ -206,7 +227,7 @@ function fmtDate(ts) {
   if (!ts) return '—';
   return new Date(ts).toLocaleString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-function safeName(s) { return (String(s || 'PanelLabels').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-').slice(0, 60)) || 'PanelLabels'; }
+function safeName(s) { return (String(s || APP_NAME).replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-').slice(0, 60)) || APP_NAME; }
 const isTouch = () => matchMedia('(pointer: coarse)').matches;
 
 /* Παράδοση αρχείου: στο κινητό με το μενού κοινοποίησης (εκεί υπάρχει «Εκτύπωση» και «Αποθήκευση»),
@@ -239,11 +260,13 @@ function downloadBlob(blob, filename) {
 }
 
 /* ================= Πλοήγηση ================= */
-const VIEWS = ['projects', 'editor', 'colors', 'print', 'info', 'backup'];
+const VIEWS = ['projects', 'editor', 'print', 'info', 'cats', 'colors', 'backup'];
+const MENU_VIEWS = { info: 'Στοιχεία ηλεκτρολόγου', cats: 'Κατηγορίες', colors: 'Χρώματα ετικετών', backup: 'Αντίγραφα ασφαλείας' };
 function route() {
   const h = (location.hash || '').replace('#', '');
   UI.view = VIEWS.includes(h) ? h : (currentProject() ? 'editor' : 'projects');
   closeSheet(true);
+  closeMenu();
   render();
   window.scrollTo(0, 0);
 }
@@ -251,14 +274,53 @@ function go(view) { if (location.hash === '#' + view) route(); else location.has
 
 function render() {
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === UI.view));
+  document.querySelectorAll('#menu [data-go]').forEach(a => a.classList.toggle('on', a.dataset.go === UI.view));
   const p = currentProject();
-  $('#topProject').textContent = p ? p.name : 'Ετικέτες ηλεκτρικών πινάκων';
+  $('#topProject').textContent = MENU_VIEWS[UI.view] || (p ? p.name : 'Ετικέτες ηλεκτρικών πινάκων');
   const app = $('#app');
-  const fn = { projects: viewProjects, editor: viewEditor, colors: viewColors, print: viewPrint, info: viewInfo, backup: viewBackup }[UI.view];
+  const fn = { projects: viewProjects, editor: viewEditor, colors: viewColors, print: viewPrint, info: viewInfo, cats: viewCats, backup: viewBackup }[UI.view];
   app.innerHTML = fn();
   if (UI.view === 'colors') renderColorPreview();
   if (UI.view === 'print') schedulePreview(0);
   if (UI.view === 'info') renderStickerPreview();
+}
+
+/* ================= Μενού ☰ και εμφάνιση ================= */
+function applyTheme() {
+  const t = S().theme;
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('panellabels.theme', t); } catch (e) { }
+}
+function menuHtml() {
+  const t = S().theme;
+  const item = (v, icon, label) => `<a href="#${v}" data-go="${v}" class="${UI.view === v ? 'on' : ''}"><svg viewBox="0 0 24 24"><path d="${icon}"/></svg><span>${label}</span><svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>`;
+  const seg = (v, label) => `<button class="seg ${t === v ? 'on' : ''}" data-act="setTheme" data-theme-v="${v}" aria-pressed="${t === v}">${label}</button>`;
+  return `<div class="menu-panel" role="dialog" aria-modal="true" aria-label="Μενού">
+    <div class="menu-head"><img src="${$('.brand-logo').src}" alt="" width="36" height="36"><strong>${APP_NAME}</strong>
+      <button class="btn icon ghost menu-x" data-act="closeMenu" aria-label="Κλείσιμο μενού"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <nav class="menu-list">
+      ${item('info', 'M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8zM4 21c1-4 4-6 8-6s7 2 8 6', 'Στοιχεία ηλεκτρολόγου')}
+      ${item('cats', 'M4 6h16M4 12h16M4 18h10', 'Κατηγορίες')}
+      ${item('colors', 'M12 3a9 9 0 1 0 0 18c.9 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8zM7.5 12.5h.01M9.5 8h.01M14.5 7.5h.01', 'Χρώματα ετικετών')}
+      ${item('backup', 'M12 3v12M7 10l5 5 5-5M4 17v4h16v-4', 'Αντίγραφα ασφαλείας')}
+    </nav>
+    <div class="menu-theme"><span>Εμφάνιση</span><div class="segs">${seg('auto', 'Αυτόματο')}${seg('light', 'Ανοιχτό')}${seg('dark', 'Σκούρο')}</div></div>
+    <p class="menu-ver">${APP_NAME} · έκδοση ${APP_VERSION}</p>
+  </div>`;
+}
+function openMenu() {
+  const m = $('#menu');
+  m.innerHTML = menuHtml();
+  m.hidden = false;
+  $('#menuBtn').setAttribute('aria-expanded', 'true');
+  setTimeout(() => { const f = m.querySelector('.menu-list a'); if (f) f.focus(); }, 30);
+}
+function closeMenu() {
+  const m = $('#menu');
+  if (!m || m.hidden) return;
+  m.hidden = true; m.innerHTML = '';
+  $('#menuBtn').setAttribute('aria-expanded', 'false');
 }
 
 /* ================= Οθόνη: Έργα ================= */
@@ -326,7 +388,7 @@ function rowHtml(p, r, ri) {
   const cells = r.items.map(i => {
     const ph = !i.text.trim();
     return `<button class="cell item${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
-      <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(i.text)}</span>${i.rating ? `<span class="r">${esc(i.rating)}</span>` : ''}</button>`;
+      <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(upGreek(i.text))}</span>${i.rating ? `<span class="r">${esc(upGreek(i.rating))}</span>` : ''}</button>`;
   }).join('');
   const free = rowFree(p, r);
   const canAdd = free >= 1;
@@ -389,7 +451,7 @@ function openSheet(itemId, focusText) {
     <div class="grab"></div>
     <div class="sheet-head"><h2>Σειρά ${f.ri + 1} · θέση ${f.ii + 1}</h2><button class="btn primary small" data-act="closeSheet">Έτοιμο</button></div>
     <label class="fld"><span>Περιγραφή</span><textarea id="itText" rows="2" placeholder="π.χ. Φωτισμός σαλονιού">${esc(it.text)}</textarea></label>
-    <div class="chips" aria-label="Γρήγορες περιγραφές">${SUGGEST.map(s => `<button class="chip soft" data-act="suggest" data-text="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+    ${D().categories.length ? `<div class="chips" aria-label="Κατηγορίες">${D().categories.map(c => `<button class="chip soft cat-chip" data-act="suggest" data-cat="${c.id}">${c.sym ? symSvg(c.sym, 'csym') : ''}${esc(c.name)}</button>`).join('')}</div>` : ''}
     <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}" ${w > freeHere ? 'disabled' : ''}>${fmtUnits(w)}</button>`).join('')}</div>
       <span class="hint measure" id="wMM">${fmtMM(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
     <label class="fld"><span>Ένδειξη (προαιρετικά)</span><input id="itRating" value="${esc(it.rating)}" placeholder="π.χ. 16A, C16, 40A 30mA" autocomplete="off"></label>
@@ -425,6 +487,7 @@ function closeSheet(silent) {
   if (sh.hidden) return;
   sh.hidden = true; sh.innerHTML = '';
   UI.sheetItem = null;
+  UI.catEdit = null;
   if (!silent) rerenderRows();
 }
 function sheetCtx() { const p = currentProject(); const f = p && UI.sheetItem && findItem(p, UI.sheetItem); return f ? { p, f } : null; }
@@ -432,7 +495,7 @@ function sheetCtx() { const p = currentProject(); const f = p && UI.sheetItem &&
 /* ================= Οθόνη: Χρώματα ετικετών ================= */
 /* Επιλογέας χρώματος: έτοιμα χρώματα + «άλλο χρώμα». group: 'label' (ετικέτες έργου) ή 'sticker' (αυτοκόλλητο). */
 function colorPicker(group, key, value, palette, label) {
-  const sw = palette.map(c => `<button class="sw ${value === c ? 'on' : ''}" style="--c:${c}" data-act="pickColor" data-g="${group}" data-k="${key}" data-c="${c}" aria-label="${esc(label)} ${c}" aria-pressed="${value === c}"></button>`).join('');
+  const sw = palette.map(c => `<button class="sw ${value === c ? 'on' : ''}" style="--c:${c}" data-act="pickColor" data-g="${group}" data-k="${key}" data-c="${c}" title="${SWATCH_NAME[c] || c}" aria-label="${esc(label)}: ${SWATCH_NAME[c] || c}" aria-pressed="${value === c}"></button>`).join('');
   const custom = !palette.includes(value);
   return `<div class="color-row"><span class="cl">${esc(label)}</span><div class="sws" data-sws="${group}-${key}">${sw}
     <label class="sw custom ${custom ? 'on' : ''}" style="--c:${value}" title="Άλλο χρώμα"><input type="color" id="cp-${group}-${key}" data-pickg="${group}" data-pickk="${key}" value="${value}" aria-label="Άλλο χρώμα: ${esc(label)}"></label></div></div>`;
@@ -445,7 +508,8 @@ function applyColor(group, key, c, inputEl) {
     commit({ debounce: !!inputEl });
     renderColorPreview(inputEl ? 120 : 0);
   } else if (group === 'sticker') {
-    D().electrician.bg = c;
+    if (key !== 'bg' && key !== 'fg') return;
+    D().electrician[key] = c;
     commit({ debounce: !!inputEl, noTouch: true });
     renderStickerPreview(inputEl ? 120 : 0);
   } else return;
@@ -467,19 +531,19 @@ function viewColors() {
   const p = currentProject();
   if (!p) return `<div class="panel empty-state"><h2>Δεν έχει ανοίξει έργο</h2><p>Τα χρώματα ορίζονται για κάθε έργο. Ανοίξτε ένα έργο πρώτα.</p><a class="btn primary" href="#projects">Λίστα έργων</a></div>`;
   const c = p.colors;
-  return `<div class="view-head"><div><div class="eyebrow">Χρώματα ετικετών</div><h1>${esc(p.name)}</h1></div></div>
-  <p class="lead">Ορίζονται μία φορά και ισχύουν για όλες τις ετικέτες αυτού του έργου, στην οθόνη, στο PDF και στην εκτύπωση.</p>
+  return `<div class="view-head"><div><div class="eyebrow">Χρώματα ετικετών · έργο</div><h1>${esc(p.name)}</h1></div></div>
+  <p class="lead">Ισχύουν για όλες τις ετικέτες αυτού του έργου. Για άλλο χρώμα πατήστε τον τελευταίο κύκλο.</p>
   <section class="panel">
     ${colorPicker('label', 'bg', c.bg, BG_SWATCH, 'Φόντο ετικέτας')}
     ${colorPicker('label', 'fg', c.fg, INK_SWATCH, 'Γραμματοσειρά')}
     ${colorPicker('label', 'sc', c.sc, INK_SWATCH, 'Σύμβολο')}
     ${colorPicker('label', 'bc', c.bc, INK_SWATCH, 'Περίγραμμα')}
-    <div class="btn-row"><button class="btn ghost" data-act="colorsReset">Προεπιλογή (λευκό φόντο, μαύρα στοιχεία)</button></div>
+    <div class="btn-row"><button class="btn ghost" data-act="colorsReset">Επαναφορά (λευκό / μαύρο)</button></div>
   </section>
   <section class="panel">
     <h2>Προεπισκόπηση</h2>
     <div class="preview" id="colorPreview"></div>
-    <p class="hint">Το αυτοκόλλητο ηλεκτρολόγου έχει δικό του φόντο, στην καρτέλα «Στοιχεία».</p>
+    <p class="hint">Το αυτοκόλλητο ηλεκτρολόγου έχει δικά του χρώματα, στα «Στοιχεία ηλεκτρολόγου».</p>
   </section>`;
 }
 
@@ -495,6 +559,7 @@ function renderColorPreview(delay) {
     if (!rows.length) rows = [{ cells: [{ w: 2, text: 'Γενικός διακόπτης', sym: 'main', rating: '40A' }, { w: 1, text: 'Φωτισμός', sym: 'light', rating: '10A' }, { w: 1, text: 'Πρίζες', sym: 'socket', rating: '16A' }].map(x => Object.assign(x, p.colors)) }];
     const width = Math.max(200, box.clientWidth - 28);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
+    freeCanvases(box);
     box.innerHTML = '';
     rows.forEach(r => {
       // μόνο για ευανάγνωστη προεπισκόπηση: κομμάτια περίπου 3,2 px ανά mm
@@ -520,40 +585,44 @@ function viewPrint() {
   return `<div class="view-head"><div><div class="eyebrow">Εκτύπωση</div><h1>${esc(p.name)}</h1></div></div>
   <section class="panel">
     <div class="grid2">
-      <label class="fld"><span>Μορφή χαρτιού</span><select id="sPage" data-sf="pageMode">
-        <option value="a4l" ${st.pageMode === 'a4l' ? 'selected' : ''}>A4 οριζόντια (αυτοκόλλητο φύλλο)</option>
-        <option value="a4p" ${st.pageMode === 'a4p' ? 'selected' : ''}>A4 κάθετη (αυτοκόλλητο φύλλο)</option>
-        <option value="roll" ${roll ? 'selected' : ''}>Ρολό ετικετών / θερμικός εκτυπωτής</option></select></label>
+      <label class="fld"><span>Χαρτί</span><select id="sPage" data-sf="pageMode">
+        <option value="a4l" ${st.pageMode === 'a4l' ? 'selected' : ''}>A4 οριζόντια</option>
+        <option value="a4p" ${st.pageMode === 'a4p' ? 'selected' : ''}>A4 κάθετη</option>
+        <option value="roll" ${roll ? 'selected' : ''}>Ρολό ετικετών (θερμικός)</option></select></label>
       <label class="fld"><span>Ύψος ετικέτας (mm)</span><input id="sH" data-sf="labelH" type="number" inputmode="decimal" step="0.5" min="6" max="40" value="${st.labelH}"></label>
-      <label class="fld"><span>Πλάτος μονάδας (mm)</span><input id="sU" data-sf="unitMM" type="number" inputmode="decimal" step="0.1" min="10" max="30" value="${st.unitMM}"></label>
-      ${roll ? `<label class="fld"><span>Μέγιστο μήκος ετικέτας (mm)</span><input id="sRoll" data-sf="rollMax" type="number" inputmode="numeric" min="40" max="2000" value="${st.rollMax}"></label>` : ''}
     </div>
-    <div class="grid2">
-      <label class="check"><input type="checkbox" id="sFill" data-pf2="fillEmpty" ${p.fillEmpty ? 'checked' : ''}>Κενές θέσεις μέχρι το τέλος της σειράς</label>
-      <label class="check"><input type="checkbox" id="sSym" data-sf="showSymbols" ${st.showSymbols ? 'checked' : ''}>Σύμβολα στις ετικέτες</label>
-      ${!roll ? `<label class="check"><input type="checkbox" id="sCap" data-sf="showCaptions" ${st.showCaptions ? 'checked' : ''}>Τίτλος πάνω από κάθε λωρίδα</label>` : ''}
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="sSym" data-sf="showSymbols" ${st.showSymbols ? 'checked' : ''}>Σύμβολα</label>
+      <label class="check"><input type="checkbox" id="sFill" data-pf2="fillEmpty" ${p.fillEmpty ? 'checked' : ''}>Κενές θέσεις</label>
+      ${!roll ? `<label class="check"><input type="checkbox" id="sCap" data-sf="showCaptions" ${st.showCaptions ? 'checked' : ''}>Τίτλοι σειρών</label>` : ''}
     </div>
-    <div class="stat-line" id="printStats"></div>
-    <div class="btn-row">
-      <button class="btn primary" data-act="pdfLabels"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zM14 2v6h6M9 14h6M9 18h4"/></svg>Δημιουργία PDF</button>
-      <button class="btn" data-act="printLabels"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση</button>
-      <button class="btn ghost" data-act="pdfCalib">Σελίδα δοκιμής διαστάσεων</button>
-    </div>
-    <p class="hint">Το κουμπί «Εκτύπωση» φτιάχνει το PDF και το ανοίγει για εκτύπωση: στο κινητό από το μενού κοινοποίησης («Εκτύπωση»), στον υπολογιστή σε νέα καρτέλα. Επιλέξτε κλίμακα <b>100%</b> / «Πραγματικό μέγεθος», όχι «Προσαρμογή στη σελίδα». Στην πρώτη χρήση τυπώστε τη σελίδα δοκιμής και μετρήστε με χάρακα. Η προεπισκόπηση στην οθόνη δεν αρκεί για έλεγχο διαστάσεων.${roll ? ' Για θερμικό εκτυπωτή: κάθε λωρίδα γίνεται ξεχωριστή σελίδα PDF στο ακριβές μέγεθός της. Ανοίξτε το PDF από την εφαρμογή του εκτυπωτή.' : ''}</p>
+    <button class="btn primary big" data-act="printLabels"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση / PDF</button>
+    <p class="hint center">Τυπώστε σε κλίμακα <b>100%</b>.</p>
+    <p class="row-warn" id="printWarn" hidden></p>
   </section>
   <section class="preview" id="preview" aria-label="Προεπισκόπηση σελίδων"><p class="hint">Φόρτωση προεπισκόπησης…</p></section>
   <section class="panel">
     <h2>Αυτοκόλλητο ηλεκτρολόγου</h2>
-    <p class="hint">Τυπώνεται χωριστά από τις ετικέτες του πίνακα. Τα στοιχεία αλλάζουν στην καρτέλα «Στοιχεία».</p>
+    <div class="inline-row">
+      <label class="fld copies"><span>Αντίτυπα</span><input id="sCopies" data-sf="stickerCopies" type="number" inputmode="numeric" min="1" max="200" value="${st.stickerCopies}"></label>
+      <button class="btn" data-act="printSticker"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση / PDF</button>
+    </div>
+  </section>
+  <details class="panel more" id="morePrint">
+    <summary>Ρυθμίσεις διαστάσεων</summary>
     <div class="grid2">
-      <label class="fld"><span>Αντίτυπα</span><input id="sCopies" data-sf="stickerCopies" type="number" inputmode="numeric" min="1" max="200" value="${st.stickerCopies}"></label>
-      <div class="fld"><span>Μέγεθος</span><span class="measure" style="min-height:48px;display:flex;align-items:center">${fmtMM(st.stickerW)} × ${fmtMM(st.stickerH)} mm</span></div>
+      <label class="fld"><span>Πλάτος μονάδας (mm)</span><input id="sU" data-sf="unitMM" type="number" inputmode="decimal" step="0.1" min="10" max="30" value="${st.unitMM}"></label>
+      ${roll ? `<label class="fld"><span>Μέγιστο μήκος ετικέτας (mm)</span><input id="sRoll" data-sf="rollMax" type="number" inputmode="numeric" min="40" max="2000" value="${st.rollMax}"></label>` : ''}
     </div>
-    <div class="btn-row">
-      <button class="btn" data-act="pdfSticker">PDF αυτοκόλλητου</button>
-      <button class="btn" data-act="printSticker">Εκτύπωση αυτοκόλλητου</button>
-    </div>
-  </section>`;
+    <p class="hint">Τυπώστε μία φορά τη σελίδα δοκιμής και μετρήστε με χάρακα: οι γραμμές πρέπει να είναι 100 mm.</p>
+    <button class="btn" data-act="printCalib">Σελίδα δοκιμής</button>
+  </details>`;
+}
+
+/* Απελευθέρωση μνήμης παλιών καμβάδων (το iPhone έχει μικρό όριο μνήμης για canvas). */
+function freeCanvases(box) {
+  if (!box) return;
+  box.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });
 }
 
 function schedulePreview(delay) {
@@ -585,13 +654,13 @@ async function renderPreview() {
     frag.appendChild(cap);
     frag.appendChild(cv);
   });
+  freeCanvases(box);
   box.innerHTML = '';
   box.appendChild(frag);
-  const statEl = $('#printStats');
-  if (statEl) {
-    statEl.innerHTML = `<span>Σελίδες: <b>${pages.length}</b></span><span>Λωρίδες: <b>${totalStrips}</b></span>
-      <span>Μονάδα: <b>${fmtMM(+st.unitMM)} mm</b></span><span>Ύψος: <b>${fmtMM(+st.labelH)} mm</b></span>
-      ${stats.overflow ? `<span style="color:var(--danger)"><b>${stats.overflow}</b> περιγραφές δεν χωρούν ολόκληρες. Μικρύνετε το κείμενο ή μεγαλώστε το ύψος.</span>` : ''}`;
+  const warn = $('#printWarn');
+  if (warn) {
+    warn.hidden = !stats.overflow;
+    warn.textContent = stats.overflow ? `${stats.overflow === 1 ? '1 περιγραφή δεν χωράει' : stats.overflow + ' περιγραφές δεν χωρούν'} ολόκληρη. Μικρύνετε το κείμενο ή μεγαλώστε το ύψος.` : '';
   }
 }
 
@@ -622,7 +691,7 @@ function openPrintWindow() {
   try { w = window.open('', '_blank'); } catch (e) { w = null; }
   if (w) {
     try {
-      w.document.title = 'PanelLabels — εκτύπωση';
+      w.document.title = APP_NAME + ' — εκτύπωση';
       w.document.body.style.cssText = 'font:16px system-ui,sans-serif;padding:24px;color:#333';
       w.document.body.textContent = 'Ετοιμάζεται το PDF για εκτύπωση…';
     } catch (e) { }
@@ -650,8 +719,8 @@ async function printPdf(pages, filename, needLogo, win) {
 /* ================= Οθόνη: Στοιχεία ηλεκτρολόγου ================= */
 function viewInfo() {
   const e = D().electrician, st = S();
-  return `<div class="view-head"><div><div class="eyebrow">Στοιχεία</div><h1>Ο ηλεκτρολόγος</h1></div></div>
-  <p class="lead">Αποθηκεύονται μία φορά και χρησιμοποιούνται σε όλα τα έργα, στο αυτοκόλλητο που κολλάτε στον πίνακα.</p>
+  return `<div class="view-head"><div><div class="eyebrow">Στοιχεία ηλεκτρολόγου</div><h1>Το αυτοκόλλητό σας</h1></div></div>
+  <p class="lead">Συμπληρώνονται μία φορά και μπαίνουν στο αυτοκόλλητο που κολλάτε στον πίνακα.</p>
   <section class="panel">
     <div class="grid2">
       <label class="fld"><span>Ονοματεπώνυμο ή επωνυμία</span><input id="eName" data-ef="name" value="${esc(e.name)}" autocomplete="organization"></label>
@@ -672,9 +741,10 @@ function viewInfo() {
       <label class="fld"><span>Πλάτος (mm)</span><input id="eW" data-sf="stickerW" type="number" inputmode="decimal" min="20" max="200" value="${st.stickerW}"></label>
       <label class="fld"><span>Ύψος (mm)</span><input id="eH" data-sf="stickerH" type="number" inputmode="decimal" min="10" max="150" value="${st.stickerH}"></label>
     </div>
-    ${colorPicker('sticker', 'bg', e.bg, BG_SWATCH, 'Φόντο αυτοκόλλητου')}
+    ${colorPicker('sticker', 'bg', e.bg, BG_SWATCH, 'Φόντο')}
+    ${colorPicker('sticker', 'fg', e.fg, INK_SWATCH, 'Γράμματα')}
     <div class="preview" id="stickerPreview"></div>
-    <div class="btn-row"><button class="btn primary" data-act="pdfSticker">PDF αυτοκόλλητου</button><button class="btn" data-act="printSticker">Εκτύπωση αυτοκόλλητου</button></div>
+    <button class="btn primary big" data-act="printSticker"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση / PDF</button>
   </section>`;
 }
 
@@ -691,6 +761,7 @@ function renderStickerPreview(delay) {
     const dpi = Math.min(300, (width * (window.devicePixelRatio || 1)) / (pg.w / MM_PER_IN));
     const cv = renderPage(pg, dpi, renderCtx(logo), null);
     cv.style.width = width + 'px';
+    freeCanvases(box);
     box.innerHTML = '';
     box.appendChild(cv);
   }, delay || 0);
@@ -716,6 +787,49 @@ function readLogo(file) {
   });
 }
 
+/* ================= Οθόνη: Κατηγορίες ================= */
+function viewCats() {
+  const cats = D().categories;
+  const rows = cats.map((c, i) => `<div class="cat-row">
+      <button class="cat-main" data-act="editCat" data-id="${c.id}">
+        <span class="cat-sym">${c.sym ? symSvg(c.sym, 'csym') : '<span class="nosym">—</span>'}</span>
+        <span class="cat-name">${esc(c.name)}</span>
+      </button>
+      <div class="cat-tools">
+        <button class="btn icon ghost" data-act="catUp" data-id="${c.id}" aria-label="Πάνω" ${i === 0 ? 'disabled' : ''}><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        <button class="btn icon ghost" data-act="catDown" data-id="${c.id}" aria-label="Κάτω" ${i === cats.length - 1 ? 'disabled' : ''}><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
+      </div></div>`).join('');
+  return `<div class="view-head"><div><div class="eyebrow">Κατηγορίες</div><h1>Έτοιμες περιγραφές</h1></div>
+      <button class="btn primary" data-act="newCat"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Νέα κατηγορία</button></div>
+    <p class="lead">Εμφανίζονται όταν προσθέτετε στοιχείο στον πίνακα. Πατήστε μία για να αλλάξετε όνομα ή σύμβολο.</p>
+    ${cats.length ? `<div class="panel cat-list">${rows}</div>` : `<div class="panel empty-state"><p>Δεν υπάρχουν κατηγορίες.</p></div>`}
+    <button class="btn ghost" data-act="catsReset">Επαναφορά αρχικών κατηγοριών</button>`;
+}
+function openCatSheet(catId) {
+  const cat = catId ? D().categories.find(c => c.id === catId) : null;
+  UI.catEdit = { id: cat ? cat.id : null, name: cat ? cat.name : '', sym: cat ? cat.sym : '' };
+  const sh = $('#sheet');
+  sh.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${cat ? 'Επεξεργασία κατηγορίας' : 'Νέα κατηγορία'}">
+    <div class="grab"></div>
+    <div class="sheet-head"><h2>${cat ? 'Επεξεργασία κατηγορίας' : 'Νέα κατηγορία'}</h2><button class="btn primary small" data-act="saveCat">Αποθήκευση</button></div>
+    <label class="fld"><span>Όνομα</span><input id="catName" value="${esc(UI.catEdit.name)}" placeholder="π.χ. Κλιματιστικό κουζίνας" autocomplete="off" maxlength="80"></label>
+    <div class="fld"><span>Σύμβολο</span><div class="sym-grid" id="catSymGrid">
+      <button class="sym-btn ${!UI.catEdit.sym ? 'on' : ''}" data-act="catSym" data-sym=""><svg viewBox="0 0 24 24"><path d="M5 5l14 14"/></svg>Χωρίς</button>
+      ${Object.keys(SYMBOLS).map(k => `<button class="sym-btn ${UI.catEdit.sym === k ? 'on' : ''}" data-act="catSym" data-sym="${k}">${symSvg(k, '')}${esc(SYMBOLS[k].name)}</button>`).join('')}
+    </div></div>
+    <div class="btn-row">${cat ? '<button class="btn danger" data-act="delCat">Διαγραφή κατηγορίας</button>' : ''}<button class="btn ghost" data-act="closeSheet">Άκυρο</button></div>
+  </div>`;
+  sh.hidden = false;
+  if (!cat) setTimeout(() => { const i = $('#catName'); if (i) i.focus(); }, 60);
+}
+function moveCat(id, dir) {
+  const cats = D().categories, i = cats.findIndex(c => c.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= cats.length) return;
+  [cats[i], cats[j]] = [cats[j], cats[i]];
+  commit({ noTouch: true });
+  render();
+}
+
 /* ================= Οθόνη: Αντίγραφα ================= */
 function viewBackup() {
   const d = D();
@@ -726,13 +840,13 @@ function viewBackup() {
   <div class="notice err"><p><b>Σημαντικό:</b> Τα έργα αποθηκεύονται μόνο σε αυτή τη συσκευή, μέσα στον browser. Αν διαγράψετε τα δεδομένα του browser (ιστορικό, cookies, δεδομένα ιστοτόπων) ή απεγκαταστήσετε την εφαρμογή, τα έργα χάνονται, εκτός αν έχετε αντίγραφο ασφαλείας.</p></div>
   <section class="panel">
     <h2>Εξαγωγή</h2>
-    <p class="hint">Δημιουργεί ένα αρχείο με όλα τα έργα, τα στοιχεία ηλεκτρολόγου και τις ρυθμίσεις. Κρατήστε το σε email, Google Drive, iCloud ή υπολογιστή.</p>
+    <p class="hint">Δημιουργεί ένα αρχείο με όλα τα έργα, τα στοιχεία ηλεκτρολόγου, τις κατηγορίες και τις ρυθμίσεις. Κρατήστε το σε email, Google Drive, iCloud ή υπολογιστή.</p>
     <dl class="kv"><dt>Έργα</dt><dd>${d.projects.length}</dd><dt>Τελευταίο αντίγραφο</dt><dd>${fmtDate(d.lastBackup)}</dd><dt>Χώρος σε χρήση</dt><dd>${(used / 1024).toFixed(0)} KB</dd></dl>
     <div class="btn-row"><button class="btn primary" data-act="exportBackup"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 17v4h16v-4"/></svg>Εξαγωγή αντιγράφου</button></div>
   </section>
   <section class="panel">
     <h2>Επαναφορά</h2>
-    <p class="hint">Επιλέξτε αρχείο αντιγράφου PanelLabels (.json). Θα ερωτηθείτε αν θα προστεθεί στα υπάρχοντα έργα ή θα τα αντικαταστήσει.</p>
+    <p class="hint">Επιλέξτε αρχείο αντιγράφου (.json). Θα ερωτηθείτε αν θα προστεθεί στα υπάρχοντα έργα ή θα τα αντικαταστήσει.</p>
     <div class="btn-row"><label class="btn file-btn">Επιλογή αρχείου αντιγράφου<input type="file" id="importFile" accept=".json,application/json"></label></div>
   </section>
   <section class="panel">
@@ -746,26 +860,26 @@ function viewBackup() {
     </ol>`}
     <p class="hint">Μετά την εγκατάσταση η εφαρμογή ανοίγει με το λογότυπο και δουλεύει και χωρίς internet.</p>
   </section>
-  <p class="hint">PanelLabels έκδοση ${APP_VERSION}</p>`;
+  <p class="hint">${APP_NAME} έκδοση ${APP_VERSION}</p>`;
 }
 
 function exportBackup() {
   const d = D();
   const payload = { app: 'PanelLabels', schema: 1, version: APP_VERSION, exportedAt: new Date().toISOString(),
-    data: { projects: d.projects, electrician: d.electrician, settings: d.settings } };
+    data: { projects: d.projects, electrician: d.electrician, settings: d.settings, categories: d.categories } };
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
   const day = new Date().toISOString().slice(0, 10);
   d.lastBackup = Date.now();
   commit({ noTouch: true });
-  deliverFile(blob, `PanelLabels-αντίγραφο-${day}.json`).then(() => { toast('Το αντίγραφο δημιουργήθηκε'); if (UI.view === 'backup' || UI.view === 'projects') render(); });
+  deliverFile(blob, `${APP_NAME}-αντίγραφο-${day}.json`).then(() => { toast('Το αντίγραφο δημιουργήθηκε'); if (UI.view === 'backup' || UI.view === 'projects') render(); });
 }
 
 async function importBackup(file) {
   let obj;
   try { obj = JSON.parse(await file.text()); }
-  catch (e) { return toast('Το αρχείο δεν είναι έγκυρο αντίγραφο PanelLabels.', true); }
+  catch (e) { return toast(`Το αρχείο δεν είναι έγκυρο αντίγραφο ${APP_NAME}.`, true); }
   const src = obj && obj.app === 'PanelLabels' && obj.data ? obj.data : (obj && Array.isArray(obj.projects) ? obj : null);
-  if (!src) return toast('Το αρχείο δεν είναι αντίγραφο PanelLabels.', true);
+  if (!src) return toast(`Το αρχείο δεν είναι αντίγραφο ${APP_NAME}.`, true);
   const incoming = normalize(src);
   const choice = await dialog({
     title: 'Επαναφορά αντιγράφου',
@@ -780,6 +894,8 @@ async function importBackup(file) {
     d.projects = incoming.projects;
     d.electrician = incoming.electrician;
     d.settings = incoming.settings;
+    d.categories = incoming.categories;
+    applyTheme();
     d.lastProjectId = d.projects[0] ? d.projects[0].id : null;
   } else {
     let added = 0, updated = 0;
@@ -789,6 +905,9 @@ async function importBackup(file) {
       else if (ip.updatedAt > d.projects[ex].updatedAt) { d.projects[ex] = ip; updated++; }
     });
     if (!d.electrician.name && incoming.electrician.name) d.electrician = incoming.electrician;
+    if (Array.isArray(src.categories)) incoming.categories.forEach(ic => {
+      if (!d.categories.some(c => catKey(c.name) === catKey(ic.name))) d.categories.push(ic);
+    });
     toast(`Προστέθηκαν ${added} έργα${updated ? `, ενημερώθηκαν ${updated}` : ''}`);
   }
   commit({ noTouch: true });
@@ -869,10 +988,60 @@ const actions = {
   },
   editItem: el => openSheet(el.dataset.id, false),
   closeSheet: () => closeSheet(),
+  openMenu: () => openMenu(),
+  closeMenu: () => closeMenu(),
+  setTheme: el => {
+    S().theme = el.dataset.themeV;
+    commit({ noTouch: true });
+    applyTheme();
+    document.querySelectorAll('#menu .seg').forEach(b => { const on = b.dataset.themeV === S().theme; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  },
+  newCat: () => openCatSheet(null),
+  editCat: el => openCatSheet(el.dataset.id),
+  catSym: el => {
+    if (!UI.catEdit) return;
+    UI.catEdit.sym = el.dataset.sym;
+    document.querySelectorAll('#catSymGrid .sym-btn').forEach(b => b.classList.toggle('on', b.dataset.sym === UI.catEdit.sym));
+  },
+  saveCat: () => {
+    const ce = UI.catEdit; if (!ce) return;
+    const name = ($('#catName').value || '').trim();
+    if (!name) { toast('Γράψτε όνομα κατηγορίας', true); $('#catName').focus(); return; }
+    const cats = D().categories;
+    const dup = cats.find(c => c.id !== ce.id && catKey(c.name) === catKey(name));
+    if (dup) { toast(`Υπάρχει ήδη η κατηγορία «${dup.name}»`, true); return; }
+    if (ce.id) { const c = cats.find(x => x.id === ce.id); if (c) { c.name = name; c.sym = ce.sym; } }
+    else cats.push(normCat({ name, sym: ce.sym }));
+    commit({ noTouch: true });
+    closeSheet(true);
+    render();
+    toast(ce.id ? 'Η κατηγορία αποθηκεύτηκε' : 'Η κατηγορία προστέθηκε');
+  },
+  delCat: async () => {
+    const ce = UI.catEdit; if (!ce || !ce.id) return;
+    const c = D().categories.find(x => x.id === ce.id); if (!c) return;
+    const ok = await dialog({ title: 'Διαγραφή κατηγορίας;', text: `Η κατηγορία «${c.name}» θα φύγει από τη λίστα. Τα στοιχεία που υπάρχουν ήδη στους πίνακες δεν αλλάζουν.`, ok: 'Διαγραφή', danger: true });
+    if (!ok) return;
+    D().categories = D().categories.filter(x => x.id !== ce.id);
+    commit({ noTouch: true });
+    closeSheet(true);
+    render();
+    toast('Η κατηγορία διαγράφηκε');
+  },
+  catUp: el => moveCat(el.dataset.id, -1),
+  catDown: el => moveCat(el.dataset.id, 1),
+  catsReset: async () => {
+    const ok = await dialog({ title: 'Επαναφορά αρχικών κατηγοριών;', text: 'Η λίστα θα γίνει όπως ήταν στην αρχή. Οι κατηγορίες που προσθέσατε θα φύγουν.', ok: 'Επαναφορά', danger: true });
+    if (!ok) return;
+    D().categories = defaultCats();
+    commit({ noTouch: true });
+    render();
+  },
   suggest: el => {
     const c = sheetCtx(); if (!c) return;
-    c.f.item.text = el.dataset.text;
-    if (!c.f.item.sym && SUGGEST_SYM[el.dataset.text]) c.f.item.sym = SUGGEST_SYM[el.dataset.text];
+    const cat = D().categories.find(x => x.id === el.dataset.cat); if (!cat) return;
+    c.f.item.text = cat.name;
+    c.f.item.sym = cat.sym;
     commit();
     reopenSheet();
   },
@@ -933,12 +1102,17 @@ const actions = {
     const p = currentProject();
     return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutLabelPages(p, S()), `${safeName(p.name)}-ετικέτες.pdf`, false, win));
   },
-  pdfCalib: () => withBusy('Δημιουργία σελίδας δοκιμής…', () => makePdf(layoutCalibration(S()), 'PanelLabels-δοκιμή-διαστάσεων.pdf', false)),
-  pdfSticker: () => withBusy('Δημιουργία PDF…', () => makePdf(layoutStickerPages(S()), 'PanelLabels-αυτοκόλλητο.pdf', true)),
+  pdfCalib: () => withBusy('Δημιουργία σελίδας δοκιμής…', () => makePdf(layoutCalibration(S()), `${APP_NAME}-δοκιμή-διαστάσεων.pdf`, false)),
+  printCalib: () => {
+    if (UI.busy) return;
+    const win = openPrintWindow();
+    return withBusy('Προετοιμασία σελίδας δοκιμής…', () => printPdf(layoutCalibration(S()), `${APP_NAME}-δοκιμή-διαστάσεων.pdf`, false, win));
+  },
+  pdfSticker: () => withBusy('Δημιουργία PDF…', () => makePdf(layoutStickerPages(S()), `${APP_NAME}-αυτοκόλλητο.pdf`, true)),
   printSticker: () => {
     if (UI.busy) return;
     const win = openPrintWindow();
-    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutStickerPages(S()), 'PanelLabels-αυτοκόλλητο.pdf', true, win));
+    return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutStickerPages(S()), `${APP_NAME}-αυτοκόλλητο.pdf`, true, win));
   },
   delLogo: () => { D().electrician.logo = ''; commit({ noTouch: true }); render(); },
   exportBackup,
@@ -987,7 +1161,17 @@ document.addEventListener('click', e => {
 });
 
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden && $('#modal').hidden) closeSheet(); });
+$('#menu').addEventListener('click', e => {
+  if (e.target.id === 'menu') return closeMenu();
+  const a = e.target.closest('[data-go]');
+  if (a && location.hash === '#' + a.dataset.go) { e.preventDefault(); closeMenu(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !$('#modal').hidden) return;
+  if (!$('#menu').hidden) return closeMenu();
+  if (!$('#sheet').hidden) closeSheet();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'catName') { e.preventDefault(); actions.saveCat(); } });
 
 document.addEventListener('input', e => {
   const t = e.target;
@@ -1070,6 +1254,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 /* ================= Εκκίνηση ================= */
 (function init() {
   Store.load();
+  applyTheme();
   const d = D();
   if (!d.initialized) {
     if (!d.projects.length) { const sp = sampleProject(); d.projects.push(sp); d.lastProjectId = sp.id; }

@@ -1,4 +1,4 @@
-/* PanelLabels — render.js
+/* EPC (PanelLabels) — render.js
  * Σχεδίαση ετικετών σε πραγματικά χιλιοστά (canvas) και δημιουργία PDF χωρίς εξωτερικές βιβλιοθήκες.
  * Όλες οι διαστάσεις είναι σε mm. Το s = pixels ανά mm για το συγκεκριμένο render.
  */
@@ -9,8 +9,9 @@ const MM_PER_IN = 25.4;
 
 /* Σύμβολα: διαδρομές SVG σε πλαίσιο 24x24, σχεδιασμένες με γραμμή (stroke). */
 const SYMBOLS = {
-  main:   { name: 'Γενικός διακόπτης', d: 'M12 2.5v6M12 15.5v6M12 15.5L7 7.5M9.6 5.2h4.8M8 21.5h8' },
-  rcd:    { name: 'Ρελέ διαρροής', d: 'M12 4.5l7.5 13h-15zM4 21h16M12 9.5v4.5' },
+  main:   { name: 'Γενικός διακόπτης', d: 'M12 2.5V9M9.8 9h4.4M12 15v6.5M12 15L7.2 8.2' },
+  mcb:    { name: 'Ασφάλεια (αυτόματη)', d: 'M12 2.5V9M10 7l4 4M14 7l-4 4M12 15v6.5M12 15L7.2 8.2' },
+  rcd:    { name: 'Ρελέ διαρροής', d: 'M12 2.5V8M10.3 6.3l3.4 3.4M13.7 6.3l-3.4 3.4M12 13.5v8M12 13.5L7.8 7.6M6.8 17.6a5.2 2.2 0 1 0 10.4 0a5.2 2.2 0 1 0-10.4 0' },
   light:  { name: 'Φωτισμός', d: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.1V17h5v-1.1c0-.8.4-1.6 1.1-2.1A6 6 0 0 0 12 3z' },
   socket: { name: 'Πρίζα', d: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM8.2 12h.1M15.7 12h.1M12 4.5v2M12 17.5v2' },
   heater: { name: 'Θερμοσίφωνας', d: 'M8 2.5h8a2.5 2.5 0 0 1 2.5 2.5v14a2.5 2.5 0 0 1-2.5 2.5H8A2.5 2.5 0 0 1 5.5 19V5A2.5 2.5 0 0 1 8 2.5zM9 10c1-1 2-1 3 0s2 1 3 0M9 14.5c1-1 2-1 3 0s2 1 3 0' },
@@ -22,6 +23,22 @@ const SYMBOLS = {
   outdoor:{ name: 'Εξωτερικός χώρος', d: 'M3 11.5L12 4l9 7.5M5.5 9.5V20h13V9.5M10 20v-5h4v5' },
   bell:   { name: 'Κουδούνι / θυροτηλέφωνο', d: 'M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15zM10 21h4' }
 };
+
+/* Κεφαλαία για ελληνικά χωρίς τόνους (ΓΕΝΙΚΟΣ, όχι ΓΕΝΙΚΌΣ). Κρατά τα διαλυτικά (ΜΑΪΟΥ, ΤΣΑΪ). */
+function upGreek(str) {
+  const s = String(str || '').normalize('NFD');
+  let out = '', prevTonos = false;
+  for (const ch of s) {
+    if (ch === '\u0301' || ch === '\u0342' || ch === '\u0313' || ch === '\u0314') { prevTonos = ch === '\u0301'; continue; }
+    if (ch === '\u0308') { out += ch; prevTonos = false; continue; }
+    const U = ch.toUpperCase();
+    // ά + ι → ΑΪ (τσάι → ΤΣΑΪ): ο τόνος στο πρώτο φωνήεν δείχνει ότι δεν είναι δίψηφο
+    if (prevTonos && (U === 'Ι' || U === 'Υ')) { out += U + '\u0308'; prevTonos = false; continue; }
+    prevTonos = false;
+    out += U;
+  }
+  return out.normalize('NFC');
+}
 
 const _pathCache = {};
 function symPath(key) {
@@ -77,8 +94,11 @@ function fitText(ctx, s, text, maxW, maxH, maxF, minF, weight) {
   if (hit) return hit;
   const m = measureCtx();
   let res = null;
+  const words = String(text).split(/\s+/).filter(Boolean);
   for (let f = maxF; f >= minF - 1e-6; f -= 0.1) {
     m.font = `${weight} ${(f * REF_S).toFixed(2)}px ${LABEL_FONT}`;
+    // μια λέξη δεν σπάει στη μέση όσο υπάρχει μικρότερο μέγεθος που τη χωράει
+    if (f > minF + 1e-6 && words.some(w => m.measureText(w).width > maxW * REF_S)) continue;
     const lines = wrapText(m, text, maxW * REF_S);
     const lh = f * 1.13;
     if (lines.length * lh <= maxH + 1e-6) { res = { f, lines, lh, overflow: false }; break; }
@@ -125,7 +145,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
   ctx.strokeStyle = sc;
 
   if (c.rating) {
-    const fr = fitText(ctx, s, c.rating, iw, Math.min(2.4, h * 0.18), Math.max(1.2, Math.min(2.2, h * 0.17, capF && capF < 99 ? capF : 99)), 1.2, 700);
+    const fr = fitText(ctx, s, c.rating, iw, Math.min(2.2, h * 0.17), Math.max(1.1, Math.min(2.0, h * 0.15, capF && capF < 99 ? capF : 99)), 1.1, 700);
     const rh = fr.lh * fr.lines.length;
     if (!measureOnly) { ctx.fillStyle = fg; drawLines(ctx, s, fr, cx, bottom - rh, 700); }
     bottom -= rh + 0.3;
@@ -134,13 +154,13 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
   const hasText = c.text && c.text.trim();
   const sym = c.sym && symPath(c.sym);
   if (sym) {
-    const ss = Math.max(2, Math.min(hasText ? Math.min((bottom - top) * 0.36, 5) : (bottom - top), iw, 8));
+    const ss = Math.max(2, Math.min(hasText ? Math.min((bottom - top) * 0.5, 9) : (bottom - top), iw * 0.9, 12));
     const sy = hasText ? top : top + ((bottom - top) - ss) / 2;
     if (!measureOnly) {
     ctx.save();
     ctx.translate((cx - ss / 2) * s, sy * s);
     ctx.scale((ss * s) / 24, (ss * s) / 24);
-    ctx.lineWidth = 1.9;
+    ctx.lineWidth = 1.7;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = sc;
@@ -153,7 +173,7 @@ function drawCell(ctx, s, x, y, w, h, c, stats, capF, measureOnly) {
   if (hasText) {
     const avail = bottom - top;
     if (avail < 1) { if (stats && !measureOnly) stats.overflow++; return measureOnly ? 1.2 : undefined; }
-    const fit = fitText(ctx, s, c.text, iw, avail, Math.min(capF || 99, 4.2, h * 0.3), 1.2, 700);
+    const fit = fitText(ctx, s, c.text, iw, avail, Math.min(capF || 99, 3.6, h * 0.26), 1.1, 700);
     if (measureOnly) return fit.f;
     if (fit.overflow && stats) stats.overflow++;
     const th = fit.lh * fit.lines.length;
@@ -177,7 +197,7 @@ function drawStrip(ctx, s, x, y, cells, h, unit, stats) {
   });
   // 1. φόντα
   // κάτω όριο: ένα κελί με πολύ κείμενο δεν μικραίνει όλη τη λωρίδα (μικραίνει μόνο το ίδιο)
-  capF = Math.max(capF, Math.min(2.0, h * 0.17));
+  capF = Math.max(capF, Math.min(1.8, h * 0.15));
   let cx = x;
   cells.forEach(c => {
     const cw = c.w * unit;
@@ -214,7 +234,7 @@ function buildRows(project, settings) {
   const col = project.colors || { bg: '#ffffff', fg: '#000000', sc: '#000000', bc: '#000000' };
   return project.rows.map((r, ri) => {
     const cells = r.items.map(i => ({
-      w: i.w, text: i.text, rating: i.rating,
+      w: i.w, text: upGreek(i.text), rating: upGreek(i.rating),
       sym: settings.showSymbols ? i.sym : '',
       bg: col.bg, fg: col.fg, sc: col.sc, bc: col.bc
     }));
@@ -327,7 +347,7 @@ function drawSticker(ctx, s, x, y, w, h, e, logoImg, stats) {
   ctx.fill();
   ctx.stroke();
   ctx.restore();
-  const ink = textOn(e.bg);
+  const ink = /^#[0-9a-f]{6}$/i.test(e.fg || '') ? e.fg : textOn(e.bg);
 
   const pad = Math.min(3, h * 0.1);
   let tx = x + pad, tw = w - 2 * pad;
@@ -387,7 +407,7 @@ function drawCalibration(ctx, s, st) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.font = `700 ${6 * s}px ${LABEL_FONT}`;
-  ctx.fillText('PanelLabels — Δοκιμή διαστάσεων', 15 * s, 22 * s);
+  ctx.fillText('EPC — Δοκιμή διαστάσεων', 15 * s, 22 * s);
   ctx.font = `400 ${3.6 * s}px ${LABEL_FONT}`;
   [
     'Εκτυπώστε σε κλίμακα 100% («Πραγματικό μέγεθος»), όχι «Προσαρμογή στη σελίδα».',
@@ -557,6 +577,6 @@ async function buildPdf(pages, renderFn) {
   let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
   for (let n = 1; n < total; n++) x += String(offs[n]).padStart(10, '0') + ' 00000 n \n';
   add(x);
-  add(`trailer\n<< /Size ${total} /Root 1 0 R /Info << /Producer (PanelLabels) >> >>\nstartxref\n${xref}\n%%EOF\n`);
+  add(`trailer\n<< /Size ${total} /Root 1 0 R /Info << /Producer (EPC) >> >>\nstartxref\n${xref}\n%%EOF\n`);
   return new Blob(parts, { type: 'application/pdf' });
 }

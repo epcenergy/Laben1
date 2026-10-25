@@ -1,4 +1,4 @@
-/* PanelLabels — styles.css
+/* EPC (PanelLabels) — styles.css
  * Διάταξη: μαύρη μπάρα επωνυμίας πάνω, μία στήλη εργασίας (max 960px), καρτέλες στο κάτω μέρος.
  * Χρώματα από το λογότυπο: πορτοκαλί/κεχριμπαρί σε μαύρο.
  */
@@ -163,14 +163,14 @@ h2 { font-size: 18px; margin: 0; text-wrap: balance; }
 .cell {
   width: calc(var(--w) * var(--u)); height: 86px; flex: none; border: 0; border-right: 1px solid #222; background: #fff; color: #111;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 3px;
-  text-align: center; font: 700 10px/1.15 Arial, Helvetica, sans-serif; cursor: pointer; position: relative; overflow: hidden;
+  text-align: center; font: 700 9px/1.15 Arial, Helvetica, sans-serif; cursor: pointer; position: relative; overflow: hidden;
   -webkit-tap-highlight-color: transparent;
 }
 .cell:last-child { border-right: 0; }
-.cell .t { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: break-word; hyphens: auto; }
+.cell .t { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; hyphens: manual; }
 .cell .r { font-size: 10px; color: #333; }
 .cell .w { position: absolute; top: 2px; left: 3px; font: 600 9px/1 var(--mono); color: #888; }
-.cell .sym { width: 22px; height: 22px; flex: none; fill: none; stroke: #111; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.cell .sym { width: 28px; height: 28px; flex: none; fill: none; stroke: #111; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .cell.ph .t { color: #9a9a9a; font-weight: 400; font-style: italic; }
 .cell:hover { background: #fff7ea; }
 .cell.sel { background: #ffe9c6; box-shadow: inset 0 0 0 3px var(--accent); }
@@ -236,7 +236,7 @@ h2 { font-size: 18px; margin: 0; text-wrap: balance; }
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
 }
-.tabbar-in { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); }
+.tabbar-in { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); }
 .tabbar a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 62px;
   color: var(--muted); text-decoration: none; font-size: 11px; font-weight: 600; letter-spacing: -.01em; -webkit-tap-highlight-color: transparent;
@@ -286,8 +286,86 @@ h2 { font-size: 18px; margin: 0; text-wrap: balance; }
 /* Πολύ στενές οθόνες (π.χ. iPhone SE): χωρούν οι 6 καρτέλες και τα κουμπιά */
 .tabbar a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 1px; }
 @media (max-width: 380px) {
-  .tabbar a { font-size: 9.5px; letter-spacing: -.02em; }
-  .tabbar svg { width: 22px; height: 22px; }
   .sticky-actions .btn svg { display: none; }
   .sticky-actions .btn { font-size: 15px; padding: 0 6px; }
 }
+
+
+/* ---------- Έκδοση 1.3: μενού ☰, κατηγορίες, απλούστερη εκτύπωση ---------- */
+.tabbar a { font-size: 12.5px; min-height: 64px; letter-spacing: 0; }
+.tabbar svg { width: 26px; height: 26px; }
+.brand-text strong { font-size: 19px; letter-spacing: .08em; }
+.menu-btn {
+  margin-left: 4px; flex: none; width: 46px; height: 46px; border-radius: 12px; border: 1px solid #2c2f33;
+  background: transparent; color: #f8ae41; display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.menu-btn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.menu-btn:active { background: #1c1f22; }
+.save-state { margin-left: auto; }
+
+.overlay.menu { z-index: 55; align-items: stretch; justify-content: flex-end; }
+.menu-panel {
+  background: var(--surface); width: min(340px, 88vw); height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 16px;
+  box-shadow: -12px 0 40px rgba(0,0,0,.3); animation: slideIn .18s ease-out;
+}
+@keyframes slideIn { from { transform: translateX(30px); opacity: .6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .menu-panel { animation: none; } }
+.menu-head { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.menu-head img { border-radius: 50%; }
+.menu-head strong { font-size: 20px; letter-spacing: .08em; }
+.menu-x { margin-left: auto; }
+.menu-list { display: flex; flex-direction: column; }
+.menu-list a {
+  display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 0 8px; border-radius: 10px;
+  color: var(--ink); text-decoration: none; font-weight: 600; font-size: 16.5px;
+}
+.menu-list a svg { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.menu-list a .chev { margin-left: auto; width: 18px; height: 18px; color: var(--muted); }
+.menu-list a:active, .menu-list a:hover { background: var(--surface-2); }
+.menu-list a.on { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.menu-list a.on svg:first-child { stroke: var(--accent-ink); }
+.menu-theme { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.menu-theme > span { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.segs { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg { min-height: 42px; border: 0; border-radius: 9px; background: transparent; font-weight: 600; font-size: 14px; cursor: pointer; }
+.seg.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.18); color: var(--ink); }
+.menu-ver { margin: auto 0 0; padding-top: 16px; font-size: 12px; color: var(--muted); }
+
+/* χρώματα: τίτλος πάνω, κύκλοι από κάτω, «άλλο χρώμα» τελευταίος δεξιά */
+.color-row { flex-direction: column; align-items: stretch; gap: 8px; padding-block: 6px; }
+.color-row .cl { width: auto; }
+.sws { gap: 10px; flex: none; }
+.sw { width: 40px; height: 40px; }
+.sw.custom::after { width: 18px; height: 18px; }
+
+/* εκτύπωση */
+.checks { display: flex; flex-wrap: wrap; gap: 4px 22px; }
+.btn.big { min-height: 56px; font-size: 17px; width: 100%; }
+.btn.big svg { width: 22px; height: 22px; }
+.hint.center { text-align: center; margin-top: -6px; }
+.inline-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.inline-row .copies { width: 110px; flex: none; }
+.inline-row .btn { flex: 1 1 180px; }
+details.more { gap: 12px; }
+details.more summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; gap: 8px; list-style: none; color: var(--muted); }
+details.more summary::-webkit-details-marker { display: none; }
+details.more summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; }
+details.more[open] summary::before { transform: rotate(45deg); }
+details.more:not([open]) { gap: 0; }
+
+/* κατηγορίες */
+.cat-list { padding: 6px; gap: 0; }
+.cat-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.cat-row:last-child { border-bottom: 0; }
+.cat-main { all: unset; flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 0 10px; cursor: pointer; border-radius: 8px; }
+.cat-main:focus-visible { outline: 3px solid var(--accent); }
+.cat-main:hover { background: var(--surface-2); }
+.cat-sym { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 8px; background: var(--surface-2); }
+.csym { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nosym { color: var(--muted); }
+.cat-name { font-weight: 600; overflow-wrap: anywhere; }
+.cat-tools { display: flex; gap: 2px; }
+.cat-chip { display: inline-flex; align-items: center; gap: 6px; }
+.cat-chip .csym { width: 18px; height: 18px; }
+@media (max-width: 600px) { .save-state { visibility: hidden; width: 0; overflow: hidden; } }

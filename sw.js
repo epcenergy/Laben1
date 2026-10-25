@@ -1,10 +1,10 @@
-/* PanelLabels service worker: λειτουργία χωρίς internet.
- * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.2.1) ώστε οι συσκευές να πάρουν τα νέα αρχεία. */
-const CACHE = 'panellabels-1.2.0';
+/* EPC service worker: λειτουργία χωρίς internet.
+ * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.3.1) ώστε οι συσκευές να πάρουν τα νέα αρχεία. */
+const CACHE = 'panellabels-1.3.0';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './render.js', './manifest.webmanifest',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png', './icons/favicon-32.png', './icons/logo-128.png'
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png',
+  './apple-touch-icon.png', './favicon-32.png', './logo-128.png'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
