@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 const STORE_KEY = 'panellabels.v1';
 const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
@@ -21,7 +21,7 @@ const OLD_DEFAULT_CATS = ['Γενικός διακόπτης', 'Γενική α�
   'Πρίζες κουζίνας', 'Πρίζες υπνοδωματίων', 'Θερμοσίφωνας', 'Κουζίνα', 'Κλιματιστικό', 'Πλυντήριο', 'Εφεδρικό'];
 const DEFAULT_SETTINGS = {
   unitMM: 17.5, labelH: 12, pageMode: 'a4l', showSymbols: true, showCaptions: true, rollMax: 250,
-  stickerW: 80, stickerH: 40, stickerCopies: 1, logoSize: 100, theme: 'auto', printSticker: false, printList: false, listRating: true, listUnits: true, listSticker: false
+  stickerW: 80, stickerH: 40, stickerCopies: 1, logoSize: 100, theme: 'auto', printSticker: false, printList: false, listRating: true, listUnits: true, listSticker: false, printCorr: 1
 };
 const BACKUP_REMIND_DAYS = 7;
 const STICKER_MAX_W = 277;
@@ -91,6 +91,7 @@ function normalize(d) {
   s.stickerH = clamp(num(s.stickerH, 40), 10, STICKER_MAX_W);
   if (s.stickerW > 190 && s.stickerH > 190) s.stickerH = 190;
   s.logoSize = clamp(Math.round(num(s.logoSize, 100)), 20, 100);
+  s.printCorr = clamp(num(s.printCorr, 1), 0.8, 1.25);
   s.stickerCopies = clamp(Math.round(num(s.stickerCopies, 1)), 1, 200);
   if (!['a4l', 'a4p', 'roll'].includes(s.pageMode)) s.pageMode = 'a4l';
   if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = 'auto';
@@ -633,7 +634,7 @@ function viewPrint() {
     </div>` : ''}
     ${st.printSticker && !(D().electrician.name || D().electrician.phone || D().electrician.logo) ? '<p class="hint">Δεν έχετε συμπληρώσει στοιχεία ηλεκτρολόγου (☰ → Στοιχεία ηλεκτρολόγου).</p>' : ''}
     <button class="btn primary big" data-act="printLabels"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 17H3v-8h18v8h-3M6 14h12v7H6z"/></svg>Εκτύπωση / PDF</button>
-    <p class="hint center">Τυπώστε σε κλίμακα <b>100%</b>.</p>
+    <p class="hint center">Τυπώστε σε κλίμακα <b>100%</b>.${st.printCorr !== 1 ? ` Διόρθωση εκτυπωτή: <b>${(st.printCorr * 100).toFixed(1).replace('.', ',')}%</b>.` : ''}</p>
     <p class="row-warn" id="printWarn" hidden></p>
   </section>
   <section class="preview" id="preview" aria-label="Προεπισκόπηση σελίδων"><p class="hint">Φόρτωση προεπισκόπησης…</p></section>
@@ -652,6 +653,15 @@ function viewPrint() {
     </div>
     <p class="hint">Τυπώστε μία φορά τη σελίδα δοκιμής και μετρήστε με χάρακα: οι γραμμές πρέπει να είναι 100 mm.</p>
     <button class="btn" data-act="printCalib">Σελίδα δοκιμής</button>
+    <div class="corr">
+      <h3>Διόρθωση εκτυπωτή <span class="badge">${(st.printCorr * 100).toFixed(1).replace('.', ',')}%</span></h3>
+      <p class="hint">Αν το χαρτί βγαίνει μικρότερο ή μεγαλύτερο, μετρήστε μια λωρίδα και γράψτε τι έπρεπε να είναι και τι βγήκε.</p>
+      <div class="grid2">
+        <label class="fld"><span>Έπρεπε να είναι (mm)</span><input id="cExp" type="number" inputmode="decimal" step="0.1" value="${fmtMM(12 * st.unitMM).replace(',', '.')}"></label>
+        <label class="fld"><span>Βγήκε στο χαρτί (mm)</span><input id="cMeas" type="number" inputmode="decimal" step="0.1" placeholder="π.χ. 200"></label>
+      </div>
+      <div class="btn-row"><button class="btn primary" data-act="applyCorr">Εφαρμογή διόρθωσης</button>${st.printCorr !== 1 ? '<button class="btn ghost" data-act="resetCorr">Επαναφορά 100%</button>' : ''}</div>
+    </div>
   </details>`;
 }
 
@@ -1154,6 +1164,22 @@ const actions = {
     if (UI.busy) return;
     const win = openPrintWindow();
     return withBusy('Προετοιμασία εκτύπωσης…', () => printPdf(layoutStickerPages(S()), `${APP_NAME}-αυτοκόλλητο.pdf`, true, win));
+  },
+  applyCorr: () => {
+    const exp = num($('#cExp').value, 0), meas = num($('#cMeas').value, 0);
+    if (!(exp > 10) || !(meas > 10)) return toast('Γράψτε και τα δύο νούμερα σε χιλιοστά.', true);
+    const k = S().printCorr * exp / meas;
+    if (k < 0.8 || k > 1.25) return toast('Η διαφορά είναι πολύ μεγάλη (πάνω από 20%). Ελέγξτε τις μετρήσεις.', true);
+    S().printCorr = Math.round(k * 10000) / 10000;
+    commit({ noTouch: true });
+    render();
+    const d = $('#morePrint'); if (d) d.open = true;
+    toast(`Η διόρθωση μπήκε: ${(S().printCorr * 100).toFixed(1).replace('.', ',')}%. Τυπώστε ξανά για έλεγχο.`);
+  },
+  resetCorr: () => {
+    S().printCorr = 1; commit({ noTouch: true }); render();
+    const d = $('#morePrint'); if (d) d.open = true;
+    toast('Η διόρθωση εκτυπωτή επανήλθε στο 100%');
   },
   delLogo: () => { D().electrician.logo = ''; commit({ noTouch: true }); render(); },
   exportBackup,

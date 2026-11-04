@@ -315,6 +315,15 @@ function splitCells(cells, unit, maxW) {
 function fmtMM(v) { return (Math.round(v * 10) / 10).toString().replace('.', ','); }
 function fmtUnits(v) { return v.toString().replace('.', ','); }
 
+/* Διόρθωση εκτυπωτή: αν ο εκτυπωτής/κινητό μικραίνει τη σελίδα (π.χ. 210 mm → 200 mm), σχεδιάζουμε σε
+ * «εικονική» σελίδα μικρότερη κατά k και μεγεθύνουμε κατά k, ώστε στο χαρτί να βγαίνουν τα σωστά χιλιοστά. */
+function corrK(st) { const k = +st.printCorr; return k >= 0.8 && k <= 1.25 ? k : 1; }
+function finalizeCorr(pages, k) {
+  if (k === 1) return pages;
+  pages.forEach(p => { p.corr = k; p.w = Math.round(p.w * k * 1000) / 1000; p.h = Math.round(p.h * k * 1000) / 1000; });
+  return pages;
+}
+
 /* Διάταξη σελίδων ετικετών. Επιστρέφει [{w,h,els:[...]}] σε mm. */
 function layoutLabelPages(project, st) {
   const unit = +st.unitMM, H = +st.labelH;
@@ -329,7 +338,8 @@ function layoutLabelPages(project, st) {
     if (st.printSticker) pages.push({ w: +st.stickerW, h: +st.stickerH, color: true, els: [{ t: 'sticker', x: 0, y: 0, w: +st.stickerW, h: +st.stickerH }] });
     return pages;
   }
-  const [PW, PH] = st.pageMode === 'a4p' ? [210, 297] : [297, 210];
+  const k = corrK(st);
+  const [PW, PH] = (st.pageMode === 'a4p' ? [210, 297] : [297, 210]).map(v => v / k);
   const M = 10, headH = 8, capH = st.showCaptions ? 4 : 0, gap = 4;
   const maxW = PW - 2 * M;
   let page = null, y = 0;
@@ -357,7 +367,7 @@ function layoutLabelPages(project, st) {
     let target = page, ty = y;
     const fitsW = sw <= PW - 2 * M + 0.01;
     if (!fitsW) { // πιο φαρδύ από την κόλλα: δική του οριζόντια σελίδα
-      target = { w: 297, h: 210, color: true, els: [] }; pages.push(target); ty = M + headH;
+      target = { w: 297 / k, h: 210 / k, color: true, els: [] }; pages.push(target); ty = M + headH;
     } else if (ty + capH + sh > PH - M && target.els.length) { newPage(); target = page; ty = y; }
     if (capH) target.els.push({ t: 'caption', x: M, y: ty, text: `Στοιχεία ηλεκτρολόγου  ·  ${fmtMM(sw)} × ${fmtMM(sh)} mm` });
     target.els.push({ t: 'sticker', x: M, y: ty + capH, w: sw, h: sh });
@@ -371,7 +381,7 @@ function layoutLabelPages(project, st) {
     right: `Μονάδα ${fmtMM(unit)} mm · ύψος ${fmtMM(H)} mm · ${date} · σελ. ${i + 1}/${n}`
   }));
   if (!rows.length) pages[0].els.push({ t: 'note', x: M, y: M + headH + 4, text: 'Το έργο δεν έχει ακόμη στοιχεία.' });
-  return pages;
+  return finalizeCorr(pages, k);
 }
 
 /* Όλες οι σελίδες της εκτύπωσης ετικετών: ετικέτες (+ στοιχεία ηλεκτρολόγου) + λίστα κυκλωμάτων (A4 κάθετη). */
@@ -383,7 +393,8 @@ function layoutPrintJob(project, st, electrician) {
 
 /* Λίστα κυκλωμάτων: A4 κάθετη, αριθμημένη, ανά σειρά πίνακα, χωρίς σύμβολα. */
 function layoutListPages(project, st, electrician) {
-  const PW = 210, PH = 297, M = 15, rowH = 7.2, grpH = 9;
+  const kc = corrK(st);
+  const PW = 210 / kc, PH = 297 / kc, M = 15, rowH = 7.2, grpH = 9;
   const showRat = st.listRating !== false, showUnits = st.listUnits !== false;
   const right = PW - M;
   const cols = { no: M, desc: M + 13, units: right - 22, rat: right - (showUnits ? 50 : 28) };
@@ -451,7 +462,7 @@ function layoutListPages(project, st, electrician) {
   else { y += 4; if (y + 6 < PH - M - 6) T(M, y + 4, `Σύνολο: ${no} ${no === 1 ? 'κύκλωμα' : 'κυκλώματα'}`, { size: 3.4, bold: true, color: '#444' }); }
   const n = pages.length;
   pages.forEach((p, i) => p.els.push({ t: 'txt', x: PW - M, y: PH - 8, text: `σελ. ${i + 1}/${n}`, size: 2.8, color: '#666', align: 'right' }));
-  return pages;
+  return finalizeCorr(pages, kc);
 }
 
 /* Διάταξη αυτοκόλλητου ηλεκτρολόγου. */
@@ -467,8 +478,9 @@ function layoutStickerPages(st) {
     const cols = Math.floor((PW - 2 * M + g) / (w + g)), rows = Math.floor((PH - 2 * M + g) / (h + g));
     return { PW, PH, cols, rowsN: rows, per: cols * rows };
   };
-  const opts = [fit(210, 297), fit(297, 210)].filter(Boolean);
-  const best = opts.sort((a, b) => b.per - a.per)[0] || { PW: 297, PH: 210, cols: 1, rowsN: 1, per: 1 };
+  const kc = corrK(st);
+  const opts = [fit(210 / kc, 297 / kc), fit(297 / kc, 210 / kc)].filter(Boolean);
+  const best = opts.sort((a, b) => b.per - a.per)[0] || { PW: 297 / kc, PH: 210 / kc, cols: 1, rowsN: 1, per: 1 };
   const { PW, PH, cols, rowsN, per } = best;
   const pages = [];
   for (let k = 0; k < copies; k++) {
@@ -477,12 +489,13 @@ function layoutStickerPages(st) {
     const c = idx % cols, r = Math.floor(idx / cols);
     pages[pages.length - 1].els.push({ t: 'sticker', x: M + c * (w + g), y: M + r * (h + g), w, h });
   }
-  return pages;
+  return finalizeCorr(pages, kc);
 }
 
 /* Σελίδα βαθμονόμησης: χάρακες 100 mm και λωρίδα 10 μονάδων. */
 function layoutCalibration(st) {
-  return [{ w: 210, h: 297, color: false, els: [{ t: 'calib' }] }];
+  const k = corrK(st);
+  return finalizeCorr([{ w: 210 / k, h: 297 / k, color: false, els: [{ t: 'calib' }] }], k);
 }
 
 /* ---------- Αυτοκόλλητο ---------- */
@@ -636,10 +649,11 @@ function loadImage(src) {
 }
 
 function renderPage(page, dpi, ctxData, stats) {
-  const s = dpi / MM_PER_IN;
+  const s0 = dpi / MM_PER_IN;
   const cv = document.createElement('canvas');
-  cv.width = Math.max(1, Math.round(page.w * s));
-  cv.height = Math.max(1, Math.round(page.h * s));
+  cv.width = Math.max(1, Math.round(page.w * s0));
+  cv.height = Math.max(1, Math.round(page.h * s0));
+  const s = s0 * (page.corr || 1); // διόρθωση εκτυπωτή: σχέδιο μεγαλύτερο κατά k
   const ctx = cv.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, cv.width, cv.height);
