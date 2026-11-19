@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.12.0';
 const STORE_KEY = 'panellabels.v1';
 /* Σειρά εμφάνισης όπως τη ζήτησε ο χρήστης: 0,5 έως 6 και στο τέλος 2,5 και 3,5 */
 const WIDTHS = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 2.5, 3.5];
@@ -48,7 +48,7 @@ const num = (v, d) => { const n = parseFloat(String(v).replace(',', '.')); retur
 /* ================= Δεδομένα ================= */
 function normItem(i) {
   i = i || {};
-  return { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || '') };
+  return { id: i.id || uid(), w: WIDTHS.includes(+i.w) ? +i.w : 1, text: String(i.text || ''), sym: SYMBOLS[i.sym] ? i.sym : '', rating: String(i.rating || ''), note: String(i.note || '').slice(0, 300) };
 }
 function normRow(r) { r = r || {}; return { id: r.id || uid(), name: String(r.name || ''), items: (Array.isArray(r.items) ? r.items : []).map(normItem) }; }
 function normColors(c, items) {
@@ -414,7 +414,7 @@ function rowHtml(p, r, ri) {
   const cells = r.items.map(i => {
     const ph = !i.text.trim();
     return `<button class="cell item${ph ? ' ph' : ''}${UI.sheetItem === i.id ? ' sel' : ''}" style="--w:${i.w}" data-act="editItem" data-id="${i.id}" aria-label="${esc(i.text || 'Στοιχείο χωρίς περιγραφή')}, ${fmtUnits(i.w)} μονάδες">
-      <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(upGreek(i.text))}</span>${i.rating ? `<span class="r">${esc(upGreek(i.rating))}</span>` : ''}</button>`;
+      <span class="w">${fmtUnits(i.w)}</span>${i.note && i.note.trim() ? '<span class="nt" title="Έχει σημείωση για τη λίστα">✎</span>' : ''}${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(upGreek(i.text))}</span>${i.rating ? `<span class="r">${esc(upGreek(i.rating))}</span>` : ''}</button>`;
   }).join('');
   const free = rowFree(p, r);
   const canAdd = free >= 0.5;
@@ -492,6 +492,7 @@ function openSheet(itemId, focusText) {
     ${D().categories.length ? `<div class="chips" aria-label="Κατηγορίες">${D().categories.map(c => `<button class="chip soft cat-chip" data-act="suggest" data-cat="${c.id}">${c.sym ? symSvg(c.sym, 'csym') : ''}${esc(c.name)}</button>`).join('')}</div>` : ''}
     <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}" ${w > freeHere ? 'disabled' : ''}>${fmtUnits(w)}</button>`).join('')}</div>
       <span class="hint measure" id="wMM">${fmtMM2(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
+    <label class="fld"><span>Σημείωση για τη λίστα κυκλωμάτων (προαιρετικά)</span><textarea id="itNote" rows="2" maxlength="300" placeholder="π.χ. Κουζίνα, τοίχος δίπλα στο ψυγείο. Δεν τυπώνεται στην ετικέτα.">${esc(it.note)}</textarea></label>
     <label class="fld"><span>Ένδειξη (προαιρετικά)</span><input id="itRating" value="${esc(it.rating)}" placeholder="π.χ. 16A, C16, 40A 30mA" autocomplete="off"></label>
     <div class="fld"><span>Σύμβολο (προαιρετικό)</span>${symGridHtml('symGrid', 'setSym', it.sym)}</div>
     <div class="fld"><span>Μετακίνηση</span><div class="move-grid">
@@ -1249,6 +1250,13 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 document.addEventListener('input', e => {
   const t = e.target;
   const p = currentProject();
+  if (t.id === 'itNote') {
+    const c = sheetCtx(); if (!c) return;
+    c.f.item.note = t.value.slice(0, 300);
+    commit({ debounce: true });
+    rerenderRows();
+    return;
+  }
   if (t.id === 'itText' || t.id === 'itRating') {
     const c = sheetCtx(); if (!c) return;
     if (t.id === 'itText') c.f.item.text = t.value; else c.f.item.rating = t.value;

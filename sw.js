@@ -2,7 +2,7 @@
  * Σε κάθε νέα έκδοση αλλάξτε το CACHE (π.χ. panellabels-1.11.2) ώστε οι συσκευές να πάρουν τα νέα αρχεία.
  * Με internet: παίρνει πάντα τα τελευταία αρχεία από το GitHub (network-first).
  * Χωρίς internet: δουλεύει από την αποθηκευμένη αντιγραφή. */
-const CACHE = 'panellabels-1.11.1';
+const CACHE = 'panellabels-1.12.0';
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './render.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png',

@@ -390,3 +390,5 @@ input.range { width: 100%; accent-color: var(--accent); min-height: 36px; }
 .corr { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .corr h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .badge { font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); font-variant-numeric: tabular-nums; }
+
+.cell .nt { position: absolute; top: 1px; right: 3px; font: 600 10px/1 var(--font); color: #9a5800; }

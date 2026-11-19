@@ -451,10 +451,23 @@ function layoutListPages(project, st, electrician) {
       if (y + rowH > PH - M - 8) newPage(false);
       no++;
       T(cols.no, y + 4.9, String(no) + '.', { size: 3.8, bold: true });
-      T(cols.desc, y + 4.9, it.text.trim() || '—', { size: 3.8, max: descEnd - cols.desc });
+      // περιγραφή όπως στην ετικέτα + σημείωση (μόνο για τη λίστα), δίπλα της ή από κάτω αν δεν χωράει
+      const main = it.text.trim() || '—', note = (it.note || '').trim();
+      const descW = descEnd - cols.desc;
+      const mainW = (() => { const m = measureCtx(); m.font = `400 ${(3.8 * REF_S).toFixed(2)}px ${LABEL_FONT}`; return m.measureText(main).width / REF_S; })();
+      let noteLines = [];
+      if (note) {
+        const inline = wrapFixed('—  ' + note, 3.4, 400, descW - mainW - 2);
+        if (inline.length === 1 && mainW + 2 < descW * 0.75) noteLines = [{ x: cols.desc + mainW + 2, text: inline[0], dy: 0 }];
+        else noteLines = wrapFixed(note, 3.4, 400, descW).slice(0, 4).map((t, k) => ({ x: cols.desc, text: t, dy: 4.6 * (k + 1) }));
+      }
+      const extra = noteLines.length && noteLines[0].dy ? 4.6 * noteLines.length : 0;
+      if (extra && y + rowH + extra > PH - M - 8) { newPage(false); }
+      T(cols.desc, y + 4.9, main, { size: 3.8, max: descW });
+      noteLines.forEach(nl => T(nl.x, y + 4.9 + nl.dy, nl.text, { size: 3.4, color: '#444', max: cols.desc + descW - nl.x }));
       if (showRat) T(cols.rat, y + 4.9, it.rating || '', { size: 3.6, max: (showUnits ? cols.units : right) - cols.rat - 3 });
       if (showUnits) T(cols.units, y + 4.9, fmtUnits(it.w), { size: 3.6 });
-      y += rowH;
+      y += rowH + extra;
       L(y, { w: 0.15, color: '#bbb' });
     });
   });
