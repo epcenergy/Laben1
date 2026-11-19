@@ -5,7 +5,7 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.11.1';
 const STORE_KEY = 'panellabels.v1';
 /* Σειρά εμφάνισης όπως τη ζήτησε ο χρήστης: 0,5 έως 6 και στο τέλος 2,5 και 3,5 */
 const WIDTHS = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 2.5, 3.5];
@@ -1345,7 +1345,16 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => { });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => { try { reg.update(); } catch (e) { } }).catch(() => { });
+    // όταν αναλάβει νέα έκδοση, ξαναφορτώνουμε μία φορά ώστε να φανεί αμέσως
+    let reloaded = false;
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      try { Store.save(); } catch (e) { }
+      location.reload();
+    });
   }
   route();
 })();
