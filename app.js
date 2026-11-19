@@ -5,9 +5,10 @@
 'use strict';
 
 const APP_NAME = 'EPC';
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 const STORE_KEY = 'panellabels.v1';
-const WIDTHS = [1, 1.5, 2, 3, 4, 5, 6];
+/* Σειρά εμφάνισης όπως τη ζήτησε ο χρήστης: 0,5 έως 6 και στο τέλος 2,5 και 3,5 */
+const WIDTHS = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 2.5, 3.5];
 /* Προεπιλεγμένες κατηγορίες (έτοιμες περιγραφές). Ο χρήστης τις αλλάζει από ☰ → Κατηγορίες. */
 const DEFAULT_CATS = [
   ['Γενικός διακόπτης', 'main'], ['Γενική ασφάλεια', 'mcb'], ['Ρελέ διαρροής', 'rcd'],
@@ -416,10 +417,11 @@ function rowHtml(p, r, ri) {
       <span class="w">${fmtUnits(i.w)}</span>${i.sym ? symSvg(i.sym) : ''}<span class="t">${ph ? 'χωρίς περιγραφή' : esc(upGreek(i.text))}</span>${i.rating ? `<span class="r">${esc(upGreek(i.rating))}</span>` : ''}</button>`;
   }).join('');
   const free = rowFree(p, r);
-  const canAdd = free >= 1;
+  const canAdd = free >= 0.5;
+  const addW = Math.min(1, free);
   let empties = '';
   if (cap) {
-    let rem = Math.round((cap - used) * 2) / 2 - (canAdd ? 1 : 0);
+    let rem = Math.round((cap - used) * 2) / 2 - (canAdd ? addW : 0);
     while (rem >= 1) { empties += '<div class="cell empty" style="--w:1" aria-hidden="true"></div>'; rem -= 1; }
     if (rem > 0) empties += `<div class="cell empty" style="--w:${rem}" aria-hidden="true"></div>`;
   }
@@ -434,8 +436,8 @@ function rowHtml(p, r, ri) {
         <button class="btn icon ghost danger" data-act="rowDel" data-row="${r.id}" aria-label="Διαγραφή σειράς"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
       </div>
     </div>
-    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip" style="--bg:${S().labelColors.bg};--fg:${S().labelColors.fg};--sc:${S().labelColors.sc};--bc:${S().labelColors.bc}">${cells}${canAdd ? `<button class="cell add" style="--w:1" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
-    ${cap && !canAdd && used <= cap ? `<p class="hint">Η σειρά είναι γεμάτη.${free > 0 ? ' Περισσεύει μισή θέση.' : ''}</p>` : ''}
+    <div class="strip-wrap" data-wrap="${r.id}"><div class="strip" style="--bg:${S().labelColors.bg};--fg:${S().labelColors.fg};--sc:${S().labelColors.sc};--bc:${S().labelColors.bc}">${cells}${canAdd ? `<button class="cell add" style="--w:${cap ? addW : 1}" data-act="addItem" data-row="${r.id}"><b>+</b>Στοιχείο</button>` : ''}${empties}</div></div>
+    ${cap && !canAdd && used <= cap ? '<p class="hint">Η σειρά είναι γεμάτη.</p>' : ''}
     ${cap && used > cap ? `<p class="row-warn">Η σειρά ξεπερνά τις ${cap} θέσεις κατά ${fmtUnits(used - cap)} μον.</p>` : ''}
   </article>`;
 }
@@ -462,6 +464,9 @@ function revealItem(itemId) {
   else if (left < wrap.scrollLeft) wrap.scrollLeft = Math.max(0, left - 8);
 }
 
+/* χιλιοστά με έως 2 δεκαδικά (8,75 mm) */
+function fmtMM2(v) { return (Math.round(v * 100) / 100).toString().replace('.', ','); }
+
 /* Πλέγμα συμβόλων: μόνο εικονίδια (το όνομα φαίνεται ως υπόδειξη / για ανάγνωση οθόνης) */
 function symGridHtml(id, act, current) {
   return `<div class="sym-grid icons" id="${id}">
@@ -486,7 +491,7 @@ function openSheet(itemId, focusText) {
     <label class="fld"><span>Περιγραφή</span><textarea id="itText" rows="2" placeholder="π.χ. Φωτισμός σαλονιού">${esc(it.text)}</textarea></label>
     ${D().categories.length ? `<div class="chips" aria-label="Κατηγορίες">${D().categories.map(c => `<button class="chip soft cat-chip" data-act="suggest" data-cat="${c.id}">${c.sym ? symSvg(c.sym, 'csym') : ''}${esc(c.name)}</button>`).join('')}</div>` : ''}
     <div class="fld"><span>Πλάτος (μονάδες)</span><div class="chips" id="wChips">${WIDTHS.map(w => `<button class="chip ${it.w === w ? 'on' : ''}" data-act="setW" data-w="${w}" ${w > freeHere ? 'disabled' : ''}>${fmtUnits(w)}</button>`).join('')}</div>
-      <span class="hint measure" id="wMM">${fmtMM(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
+      <span class="hint measure" id="wMM">${fmtMM2(it.w * S().unitMM)} mm${p.modulesPerRow ? ` · ελεύθερες θέσεις στη σειρά: ${fmtUnits(freeHere - it.w)}` : ''}</span></div>
     <label class="fld"><span>Ένδειξη (προαιρετικά)</span><input id="itRating" value="${esc(it.rating)}" placeholder="π.χ. 16A, C16, 40A 30mA" autocomplete="off"></label>
     <div class="fld"><span>Σύμβολο (προαιρετικό)</span>${symGridHtml('symGrid', 'setSym', it.sym)}</div>
     <div class="fld"><span>Μετακίνηση</span><div class="move-grid">
@@ -1032,8 +1037,9 @@ const actions = {
     const p = currentProject();
     const r = p.rows.find(x => x.id === el.dataset.row);
     if (!r) return;
-    if (rowFree(p, r) < 1) return toast(fullMsg(p, r), true);
-    const it = normItem({ w: 1 });
+    const free = rowFree(p, r);
+    if (free < 0.5) return toast(fullMsg(p, r), true);
+    const it = normItem({ w: free < 1 ? 0.5 : 1 });
     r.items.push(it);
     commit();
     openSheet(it.id, true);
@@ -1106,7 +1112,7 @@ const actions = {
     reopenSheet();
     return;
     document.querySelectorAll('#wChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.w === c.f.item.w));
-    $('#wMM').textContent = fmtMM(c.f.item.w * S().unitMM) + ' mm';
+    $('#wMM').textContent = fmtMM2(c.f.item.w * S().unitMM) + ' mm';
     rerenderRows();
   },
   setSym: el => {
